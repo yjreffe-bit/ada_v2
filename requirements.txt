@@ -22,3 +22,7 @@ python-dotenv
 mediapipe
 # CAD Generation
 build123d
+moviepy
+numpy
+pyttsx3
+pytest-asyncio

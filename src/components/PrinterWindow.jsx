@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, RefreshCw, Printer, Thermometer, Clock, FileText, CheckCircle, AlertTriangle, ExternalLink } from 'lucide-react';
 
-const { shell } = window.require('electron');
+const electronApi = typeof window !== 'undefined' && typeof window.require === 'function'
+    ? window.require('electron')
+    : null;
+const shell = electronApi?.shell ?? null;
 
 const PrinterWindow = ({
     socket,
@@ -10,7 +13,8 @@ const PrinterWindow = ({
     activeDragElement,
     setActiveDragElement,
     onMouseDown,
-    zIndex = 40
+    zIndex = 40,
+    mobileLayout = false
 }) => {
     const [isDiscovering, setIsDiscovering] = useState(false);
     const [printers, setPrinters] = useState([]); // [{ name, host, port, printer_type, status: {...}, camera_url: ... }]
@@ -82,11 +86,19 @@ const PrinterWindow = ({
             id="printer"
             onMouseDown={onMouseDown}
             style={{
-                position: 'absolute',
-                left: position.x,
-                top: position.y,
-                transform: 'translate(-50%, -50%)',
-                width: '380px',
+                position: mobileLayout ? 'fixed' : 'absolute',
+                ...(mobileLayout ? {
+                    left: '50%',
+                    top: 'calc(env(safe-area-inset-top) + 6.5rem)',
+                    transform: 'translateX(-50%)',
+                    width: 'min(calc(100vw - 1.5rem), 440px)',
+                    maxHeight: 'min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), 560px)'
+                } : {
+                    left: position.x,
+                    top: position.y,
+                    transform: 'translate(-50%, -50%)',
+                    width: '380px'
+                }),
                 zIndex: zIndex
             }}
             className="pointer-events-auto backdrop-blur-xl bg-black/80 border border-green-500/30 rounded-2xl shadow-[0_0_30px_rgba(74,222,128,0.1)] overflow-hidden flex flex-col"
@@ -115,7 +127,7 @@ const PrinterWindow = ({
             </div>
 
             {/* Content */}
-            <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
+            <div className={`${mobileLayout ? 'max-h-none' : 'max-h-[400px]'} p-4 overflow-y-auto custom-scrollbar`}>
                 {/* Manual Add Section */}
                 <div className="mb-4 p-3 bg-white/5 border border-white/10 rounded-lg">
                     <div className="text-[10px] uppercase text-white/40 font-bold mb-2 tracking-wider">Manual Add</div>
@@ -221,7 +233,14 @@ const PrinterWindow = ({
                                     <div className="flex items-center gap-2">
                                         {/* Open Interface Button */}
                                         <button
-                                            onClick={() => shell.openExternal(`http://${printer.host}`)}
+                                            onClick={() => {
+                                                const url = `http://${printer.host}`;
+                                                if (shell) {
+                                                    shell.openExternal(url);
+                                                } else {
+                                                    window.open(url, '_blank', 'noopener,noreferrer');
+                                                }
+                                            }}
                                             className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 px-2 py-0.5 rounded transition-colors"
                                             title="Open printer web interface"
                                         >

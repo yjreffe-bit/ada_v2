@@ -27,7 +27,7 @@ const LoadingCube = () => {
     );
 };
 
-const CadWindow = ({ data, thoughts, retryInfo = {}, onClose, socket }) => {
+const CadWindow = ({ data, thoughts, retryInfo = {}, onClose, socket, mobileLayout = false }) => {
     // data format: { format: "stl", data: "base64..." }
     const [isIterating, setIsIterating] = useState(false);
     const [prompt, setPrompt] = useState("");
@@ -139,7 +139,7 @@ const CadWindow = ({ data, thoughts, retryInfo = {}, onClose, socket }) => {
             {/* Show if iterating OR if no data exists (and not loading) */}
             {(isIterating || (!data && data?.format !== 'loading')) && (
                 <div className={`absolute inset-0 z-20 ${!data ? 'bg-gray-900' : 'bg-black/80'} flex items-center justify-center p-4`}>
-                    <div className="bg-gray-800 border border-cyan-500/50 rounded p-4 w-full max-w-sm pointer-events-auto shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+                    <div className={`bg-gray-800 border border-cyan-500/50 rounded p-4 w-full ${mobileLayout ? 'max-w-full' : 'max-w-sm'} pointer-events-auto shadow-[0_0_20px_rgba(6,182,212,0.2)]`}>
                         <h4 className="text-cyan-400 text-sm mb-2 font-mono">
                             {!data ? "New Design" : "Refine Design"}
                         </h4>
@@ -198,7 +198,7 @@ const CadWindow = ({ data, thoughts, retryInfo = {}, onClose, socket }) => {
 
             {/* Streaming Thoughts Panel */}
             {data?.format === 'loading' && (
-                <div className="absolute inset-y-0 right-0 w-2/5 p-4 bg-black/70 backdrop-blur-sm border-l border-green-500/30 overflow-hidden flex flex-col">
+                <div className={`${mobileLayout ? 'absolute inset-x-0 bottom-0 h-[42%] border-t' : 'absolute inset-y-0 right-0 w-2/5 border-l'} p-4 bg-black/70 backdrop-blur-sm border-green-500/30 overflow-hidden flex flex-col`}>
                     <div className="flex items-center justify-between mb-2">
                         <h4 className="text-green-400 text-xs font-mono tracking-widest uppercase flex items-center gap-2">
                             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>

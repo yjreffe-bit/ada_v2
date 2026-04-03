@@ -2,21 +2,24 @@ import os
 import json
 import asyncio
 from datetime import datetime
-from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+from gemini_key_manager import GeminiKeyManager
+
 load_dotenv()
 
 class CadAgent:
     def __init__(self, on_thought=None, on_status=None):
-        self.client = genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY"))
+        self.key_manager = GeminiKeyManager(http_options={"api_version": "v1beta"})
+        self.client = self.key_manager.primary_client
         # Using Gemini 2.5 Pro for thinking/streaming support
         self.model = "gemini-3-pro-preview"
         self.on_thought = on_thought  # Callback for streaming thoughts 
         self.on_status = on_status  # Callback for retry status info
+        self.system_prompt = None
         
         self.system_instruction = """
 You are a Python-based 3D CAD Engineer using the `build123d` library.
@@ -60,6 +63,46 @@ export_stl(result_part, 'output.stl')
 ```
 """
 
+    async def _generate_stream_with_failover(self, current_prompt):
+        last_error = None
+
+        for _ in range(len(self.key_manager._entries)):
+            entry = await self.key_manager.acquire()
+            raw_content = ""
+
+            try:
+                stream = await entry["client"].aio.models.generate_content_stream(
+                    model=self.model,
+                    contents=current_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.system_instruction,
+                        temperature=1.0,
+                        thinking_config=types.ThinkingConfig(include_thoughts=True)
+                    )
+                )
+                async for chunk in stream:
+                    if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.parts:
+                        for part in chunk.candidates[0].content.parts:
+                            if not part.text:
+                                continue
+                            if part.thought:
+                                if self.on_thought:
+                                    self.on_thought(part.text)
+                            else:
+                                raw_content += part.text
+
+                await self.key_manager.release_success(entry)
+                return raw_content
+            except Exception as error:
+                last_error = error
+                await self.key_manager.report_failure(entry, error)
+                if not self.key_manager.is_retryable_error(error):
+                    raise
+
+        if last_error:
+            raise last_error
+        raise RuntimeError("Gemini generation failed before any key could be used.")
+
     async def generate_prototype(self, prompt: str, output_dir: Optional[str] = None):
         """
         Generates 3D geometry by asking Gemini for a script, then running it LOCALLY.
@@ -100,28 +143,7 @@ export_stl(result_part, 'output.stl')
                     self.on_status(status_info)
                 
                 # 1. Ask Gemini for the code with streaming and thinking
-                raw_content = ""
-                stream = await self.client.aio.models.generate_content_stream(
-                    model=self.model,
-                    contents=current_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=self.system_instruction,
-                        temperature=1.0,
-                        thinking_config=types.ThinkingConfig(include_thoughts=True)
-                    )
-                )
-                async for chunk in stream:
-                    if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.parts:
-                        for part in chunk.candidates[0].content.parts:
-                            if not part.text:
-                                continue
-                            elif part.thought:
-                                # Stream thought to callback
-                                if self.on_thought:
-                                    self.on_thought(part.text)
-                            else:
-                                # Accumulate answer text
-                                raw_content += part.text
+                raw_content = await self._generate_stream_with_failover(current_prompt)
                 
                 if not raw_content:
                     print("[CadAgent DEBUG] [ERR] Empty response from model.")
@@ -316,28 +338,7 @@ Ensure you still export to 'output.stl'.
                     self.on_status(status_info)
                 
                 # 1. Ask Gemini for the code with streaming and thinking
-                raw_content = ""
-                stream = await self.client.aio.models.generate_content_stream(
-                    model=self.model,
-                    contents=current_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=self.system_instruction,
-                        temperature=1.0,
-                        thinking_config=types.ThinkingConfig(include_thoughts=True)
-                    )
-                )
-                async for chunk in stream:
-                    if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.parts:
-                        for part in chunk.candidates[0].content.parts:
-                            if not part.text:
-                                continue
-                            elif part.thought:
-                                # Stream thought to callback
-                                if self.on_thought:
-                                    self.on_thought(part.text)
-                            else:
-                                # Accumulate answer text
-                                raw_content += part.text
+                raw_content = await self._generate_stream_with_failover(current_prompt)
                 
                 if not raw_content:
                     print("[CadAgent DEBUG] [ERR] Empty response from model.")

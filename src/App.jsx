@@ -1,25 +1,141 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState, useRef } from 'react';
 import io from 'socket.io-client';
 
 import Visualizer from './components/Visualizer';
 import TopAudioBar from './components/TopAudioBar';
-import CadWindow from './components/CadWindow';
-import BrowserWindow from './components/BrowserWindow';
 import ChatModule from './components/ChatModule';
 import ToolsModule from './components/ToolsModule';
-import { Mic, MicOff, Settings, X, Minus, Power, Video, VideoOff, Layout, Hand, Printer, Clock } from 'lucide-react';
-import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
-// MemoryPrompt removed - memory is now actively saved to project
-import ConfirmationPopup from './components/ConfirmationPopup';
-import AuthLock from './components/AuthLock';
-import KasaWindow from './components/KasaWindow';
-import PrinterWindow from './components/PrinterWindow';
-import SettingsWindow from './components/SettingsWindow';
+import { X, Minus, Printer, Clock, RefreshCw, ShieldAlert } from 'lucide-react';
+
+const CadWindow = lazy(() => import('./components/CadWindow'));
+const BrowserWindow = lazy(() => import('./components/BrowserWindow'));
+const VideoContentWindow = lazy(() => import('./components/VideoContentWindow'));
+const ConfirmationPopup = lazy(() => import('./components/ConfirmationPopup'));
+const AuthLock = lazy(() => import('./components/AuthLock'));
+const KasaWindow = lazy(() => import('./components/KasaWindow'));
+const PrinterWindow = lazy(() => import('./components/PrinterWindow'));
+const SettingsWindow = lazy(() => import('./components/SettingsWindow'));
 
 
 
-const socket = io('http://localhost:8000');
-const { ipcRenderer } = window.require('electron');
+const electronApi = typeof window !== 'undefined' && typeof window.require === 'function'
+    ? window.require('electron')
+    : null;
+const ipcRenderer = electronApi?.ipcRenderer ?? null;
+
+const resolveSocketUrl = () => {
+    if (typeof window === 'undefined') {
+        return 'http://127.0.0.1:8000';
+    }
+
+    const configuredUrl = import.meta.env.VITE_SOCKET_URL;
+    if (configuredUrl) {
+        return configuredUrl;
+    }
+
+    if (window.location.protocol === 'file:') {
+        return 'http://127.0.0.1:8000';
+    }
+
+    return window.location.origin;
+};
+
+const socket = io(resolveSocketUrl(), {
+    transports: ['websocket', 'polling'],
+    autoConnect: true,
+    withCredentials: false,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 10000
+});
+
+const isLocalBrowserHost = () => {
+    if (typeof window === 'undefined') return true;
+    return ['localhost', '127.0.0.1'].includes(window.location.hostname);
+};
+
+const isExplicitRemoteBrowserMode = () => {
+    if (typeof window === 'undefined') return false;
+
+    const params = new URLSearchParams(window.location.search);
+    const remoteParam = (params.get('remote') || params.get('remoteAudio') || '').toLowerCase();
+    const configuredMode = (import.meta.env.VITE_REMOTE_AUDIO_MODE || '').toLowerCase();
+
+    return ['1', 'true', 'host', 'remote'].includes(remoteParam)
+        || ['host', 'remote'].includes(configuredMode);
+};
+
+const isSecureMediaContext = () => {
+    if (typeof window === 'undefined') return true;
+    return window.location.protocol === 'file:' || window.isSecureContext || isLocalBrowserHost();
+};
+
+const getMediaErrorMessage = (error, type) => {
+    if (!error) {
+        return `${type} access is unavailable.`;
+    }
+
+    switch (error.name) {
+        case 'NotAllowedError':
+        case 'PermissionDeniedError':
+            return `${type} permission was denied by the browser.`;
+        case 'NotFoundError':
+        case 'DevicesNotFoundError':
+            return `No ${type.toLowerCase()} device was found.`;
+        case 'NotReadableError':
+        case 'TrackStartError':
+            return `${type} is busy in another app or unavailable.`;
+        case 'SecurityError':
+            return `${type} requires HTTPS or localhost in mobile browsers.`;
+        case 'OverconstrainedError':
+            return `The selected ${type.toLowerCase()} device is not available.`;
+        default:
+            return error.message || `${type} could not be started.`;
+    }
+};
+
+const LoadingPanel = ({ label = 'Loading panel...' }) => (
+    <div className="flex h-full min-h-[8rem] w-full items-center justify-center text-xs uppercase tracking-[0.2em] text-cyan-500/70">
+        {label}
+    </div>
+);
+
+const getViewportState = () => {
+    if (typeof window === 'undefined') {
+        return {
+            width: 1280,
+            height: 720,
+            isMobileLayout: false,
+            isCompactLayout: false
+        };
+    }
+
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    return {
+        width,
+        height,
+        isMobileLayout: width <= 1024,
+        isCompactLayout: width <= 480 || height <= 760
+    };
+};
+
+const clampWithinViewport = (pos, size, options = {}) => {
+    const { width, height } = getViewportState();
+    const {
+        margin = 12,
+        topOffset = 60,
+        bottomOffset = 12
+    } = options;
+
+    return {
+        x: Math.max(size.w / 2 + margin, Math.min(width - size.w / 2 - margin, pos.x)),
+        y: Math.max(size.h / 2 + margin + topOffset, Math.min(height - size.h / 2 - margin - bottomOffset, pos.y))
+    };
+};
 
 function App() {
     const [status, setStatus] = useState('Disconnected');
@@ -60,6 +176,10 @@ function App() {
     const [showPrinterWindow, setShowPrinterWindow] = useState(false);
     const [showCadWindow, setShowCadWindow] = useState(false);
     const [showBrowserWindow, setShowBrowserWindow] = useState(false);
+    const [showVideoStudioWindow, setShowVideoStudioWindow] = useState(false);
+    const [videoContentData, setVideoContentData] = useState(null);
+    const [videoContentStatus, setVideoContentStatus] = useState('idle');
+    const [geminiKeyStatus, setGeminiKeyStatus] = useState(null);
 
     // Printing workflow status (for top toolbar display)
     const [slicingStatus, setSlicingStatus] = useState({ active: false, percent: 0, message: '' });
@@ -84,6 +204,18 @@ function App() {
     const [selectedWebcamId, setSelectedWebcamId] = useState(() => localStorage.getItem('selectedWebcamId') || '');
     const [showSettings, setShowSettings] = useState(false);
     const [currentProject, setCurrentProject] = useState('default');
+    const [viewport, setViewport] = useState(getViewportState);
+
+    const isMobileLayout = viewport.isMobileLayout;
+    const isCompactLayout = viewport.isCompactLayout;
+    const isElectron = Boolean(ipcRenderer);
+    const isRemoteBrowserClient = !isElectron && isExplicitRemoteBrowserMode();
+    const secureMediaAvailable = isElectron || isSecureMediaContext();
+
+    const [connectionIssue, setConnectionIssue] = useState('');
+    const [mediaWarning, setMediaWarning] = useState('');
+    const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
+    const [mediaPermissions, setMediaPermissions] = useState({ audio: false, video: false });
 
     // Modular Mode State
     const [isModularMode, setIsModularMode] = useState(false);
@@ -93,6 +225,7 @@ function App() {
         chat: { x: window.innerWidth / 2, y: window.innerHeight / 2 + 100 },
         cad: { x: window.innerWidth / 2 + 300, y: window.innerHeight / 2 },
         browser: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 },
+        videoContent: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
         kasa: { x: window.innerWidth / 2 + 350, y: window.innerHeight / 2 - 100 },
         printer: { x: window.innerWidth / 2 - 350, y: window.innerHeight / 2 - 100 },
         tools: { x: window.innerWidth / 2, y: window.innerHeight - 100 } // Fixed bottom OFFSET
@@ -104,6 +237,7 @@ function App() {
         tools: { w: 500, h: 80 }, // Approx
         cad: { w: 400, h: 400 },
         browser: { w: 550, h: 380 },
+        videoContent: { w: 960, h: 720 },
         video: { w: 320, h: 180 },
         kasa: { w: 300, h: 380 }, // Approx
         printer: { w: 380, h: 380 } // Approx
@@ -112,7 +246,7 @@ function App() {
 
     // Z-Index Stacking Order (last element = highest z-index)
     const [zIndexOrder, setZIndexOrder] = useState([
-        'visualizer', 'chat', 'tools', 'video', 'cad', 'browser', 'kasa', 'printer'
+        'visualizer', 'chat', 'tools', 'video', 'cad', 'browser', 'videoContent', 'kasa', 'printer'
     ]);
 
     // Hand Control State
@@ -153,6 +287,7 @@ function App() {
     const lastActiveDragElementRef = useRef(null);
     const lastCursorPosRef = useRef({ x: 0, y: 0 });
     const lastWristPosRef = useRef({ x: 0, y: 0 }); // For stable fist gesture tracking
+    const handConnectionsRef = useRef([]);
 
     // Smoothing and Snapping Refs
     const smoothedCursorPosRef = useRef({ x: 0, y: 0 });
@@ -161,6 +296,100 @@ function App() {
     // Mouse Drag Refs
     const dragOffsetRef = useRef({ x: 0, y: 0 });
     const isDraggingRef = useRef(false);
+
+    const connectionBannerMessage = useMemo(() => {
+        if (!isOnline) {
+            return 'Device is offline. Reconnect to Wi-Fi or mobile data to reach A.D.A.';
+        }
+        if (connectionIssue) {
+            return connectionIssue;
+        }
+        if (!socketConnected) {
+            return 'Trying to reconnect to the A.D.A backend.';
+        }
+        if (isRemoteBrowserClient) {
+            return 'Remote mobile mode is active. Voice uses the host desktop audio path; this phone is acting as the control surface.';
+        }
+        return '';
+    }, [connectionIssue, isOnline, isRemoteBrowserClient, socketConnected]);
+
+    const applyEnumeratedDevices = (devs) => {
+        const audioInputs = devs.filter(d => d.kind === 'audioinput');
+        const audioOutputs = devs.filter(d => d.kind === 'audiooutput');
+        const videoInputs = devs.filter(d => d.kind === 'videoinput');
+
+        setMicDevices(audioInputs);
+        setSpeakerDevices(audioOutputs);
+        setWebcamDevices(videoInputs);
+
+        const savedMicId = localStorage.getItem('selectedMicId');
+        if (savedMicId && audioInputs.some(d => d.deviceId === savedMicId)) {
+            setSelectedMicId(savedMicId);
+        } else if (audioInputs.length > 0) {
+            setSelectedMicId(audioInputs[0].deviceId);
+        }
+
+        const savedSpeakerId = localStorage.getItem('selectedSpeakerId');
+        if (savedSpeakerId && audioOutputs.some(d => d.deviceId === savedSpeakerId)) {
+            setSelectedSpeakerId(savedSpeakerId);
+        } else if (audioOutputs.length > 0) {
+            setSelectedSpeakerId(audioOutputs[0].deviceId);
+        }
+
+        const savedWebcamId = localStorage.getItem('selectedWebcamId');
+        if (savedWebcamId && videoInputs.some(d => d.deviceId === savedWebcamId)) {
+            setSelectedWebcamId(savedWebcamId);
+        } else if (videoInputs.length > 0) {
+            setSelectedWebcamId(videoInputs[0].deviceId);
+        }
+    };
+
+    const refreshMediaDevices = async () => {
+        if (!navigator.mediaDevices?.enumerateDevices) {
+            setMediaWarning('This browser does not expose media devices.');
+            return;
+        }
+
+        try {
+            const devs = await navigator.mediaDevices.enumerateDevices();
+            applyEnumeratedDevices(devs);
+        } catch (error) {
+            console.error('Failed to enumerate devices:', error);
+            setMediaWarning('Unable to read microphone or camera devices in this browser.');
+        }
+    };
+
+    const requestMediaAccess = async ({ audio = false, video = false } = {}) => {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setMediaWarning('This browser does not support microphone or camera capture.');
+            return false;
+        }
+
+        if (!secureMediaAvailable) {
+            setMediaWarning('Microphone and camera access need HTTPS or localhost in mobile browsers.');
+            return false;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio,
+                video
+            });
+
+            stream.getTracks().forEach(track => track.stop());
+            setMediaPermissions(prev => ({
+                audio: prev.audio || audio,
+                video: prev.video || video
+            }));
+            setMediaWarning('');
+            await refreshMediaDevices();
+            return true;
+        } catch (error) {
+            console.error('Media permission request failed:', error);
+            setMediaWarning(getMediaErrorMessage(error, video ? 'Camera' : 'Microphone'));
+            return false;
+        }
+    };
 
     // Update refs when state changes
     useEffect(() => {
@@ -183,53 +412,53 @@ function App() {
     // Centering Logic (Startup & Resize)
     useEffect(() => {
         const centerElements = () => {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
+            const nextViewport = getViewportState();
+            const { width, height, isMobileLayout: mobile, isCompactLayout: compact } = nextViewport;
+            const topBarHeight = mobile ? 112 : 60;
+            const gap = mobile ? 14 : 20;
+            const safeWidth = Math.max(280, width - (mobile ? 24 : 0));
 
-            // Calculate available vertical space
-            // Tools is fixed at bottom ~100px space
-            const toolsY = height - 100;
-            // ToolsModule uses translate(-50%, -50%). So its Center Y.
-            // Let's reserve bottom 140px for tools to be safe and float it nicely.
-            const toolsCenterY = height - 100;
-
-            const gap = 20;
-
-            // Chat: Anchor is Top-Center (translate(-50%, 0)).
-            // We want Chat Bottom to be above Tools Top.
-            // Tools Top = toolsCenterY - (ToolsHeight/2) approx 40 = height - 140;
-            const chatBottomLimit = height - 140;
-
-            // Dynamic Height Calculation to fit screen
-            // Standard Heights
             let vizH = 400;
             let chatH = 250;
-            const topBarHeight = 60;
 
-            // Total needed: TopBar + Viz + Gap + Chat + Gap + Tools (140 reserved)
-            const totalNeeded = topBarHeight + vizH + gap + chatH + gap + 140;
+            if (mobile) {
+                vizH = Math.max(180, Math.min(300, height * 0.24));
+                chatH = Math.max(190, Math.min(280, height * 0.28));
+            } else {
+                const totalNeeded = topBarHeight + vizH + gap + chatH + gap + 140;
 
-            if (height < totalNeeded) {
-                // Scale down
-                const available = height - topBarHeight - 140 - (gap * 2);
-                // Allocate 60% to Viz, 40% to Chat
-                vizH = available * 0.6;
-                chatH = available * 0.4;
+                if (height < totalNeeded) {
+                    const available = height - topBarHeight - 140 - (gap * 2);
+                    vizH = available * 0.6;
+                    chatH = available * 0.4;
+                }
             }
 
-            // Positions
-            // Visualizer (Center Anchored)
-            // Top of Viz = TopBarHeight. Center = TopBarHeight + VizH/2
-            const vizY = topBarHeight + (vizH / 2); // Removed buffer
+            const popupHeight = Math.min(height - topBarHeight - 28, Math.max(360, height * 0.72));
+            const nextSizes = {
+                visualizer: { w: mobile ? safeWidth : Math.min(600, width * 0.8), h: vizH },
+                chat: { w: mobile ? safeWidth : Math.min(600, width * 0.9), h: chatH },
+                tools: { w: mobile ? safeWidth : 500, h: mobile ? (compact ? 144 : 112) : 80 },
+                cad: { w: mobile ? Math.min(safeWidth, 720) : 400, h: mobile ? popupHeight : 400 },
+                browser: { w: mobile ? Math.min(safeWidth, 720) : 550, h: mobile ? popupHeight : 380 },
+                videoContent: { w: mobile ? Math.min(safeWidth, 820) : Math.min(1100, width * 0.82), h: mobile ? Math.min(popupHeight, 760) : Math.min(760, height * 0.82) },
+                video: {
+                    w: mobile ? Math.min(176, Math.round(safeWidth * 0.42)) : 320,
+                    h: mobile ? Math.round(Math.min(176, safeWidth * 0.42) * 9 / 16) : 180
+                },
+                kasa: { w: mobile ? Math.min(safeWidth, 420) : 300, h: mobile ? Math.min(popupHeight, 560) : 380 },
+                printer: { w: mobile ? Math.min(safeWidth, 440) : 380, h: mobile ? Math.min(popupHeight, 560) : 380 }
+            };
 
-            // Chat (Top Anchored)
-            // Top of Chat = TopBarHeight + VizH + Gap
+            const vizY = topBarHeight + (vizH / 2);
             const chatY = topBarHeight + vizH + gap;
+            const toolsCenterY = mobile ? height - (compact ? 110 : 92) : height - 100;
+            const popupCenter = { x: width / 2, y: topBarHeight + ((height - topBarHeight) / 2) };
 
+            setViewport(nextViewport);
             setElementSizes(prev => ({
                 ...prev,
-                visualizer: { w: Math.min(600, width * 0.8), h: vizH },
-                chat: { w: Math.min(600, width * 0.9), h: chatH }
+                ...nextSizes
             }));
 
             setElementPositions(prev => ({
@@ -245,7 +474,12 @@ function App() {
                 tools: {
                     x: width / 2,
                     y: toolsCenterY
-                }
+                },
+                cad: clampWithinViewport(prev.cad || popupCenter, nextSizes.cad, { topOffset: topBarHeight, bottomOffset: 20 }),
+                browser: clampWithinViewport(prev.browser || popupCenter, nextSizes.browser, { topOffset: topBarHeight, bottomOffset: 20 }),
+                videoContent: clampWithinViewport(prev.videoContent || popupCenter, nextSizes.videoContent, { topOffset: topBarHeight, bottomOffset: 20 }),
+                kasa: clampWithinViewport(prev.kasa || popupCenter, nextSizes.kasa, { topOffset: topBarHeight, bottomOffset: 20 }),
+                printer: clampWithinViewport(prev.printer || popupCenter, nextSizes.printer, { topOffset: topBarHeight, bottomOffset: 20 })
             }));
         };
 
@@ -259,15 +493,11 @@ function App() {
 
     // Utility: Clamp position to viewport so component stays fully visible
     const clampToViewport = (pos, size) => {
-        const margin = 10;
-        const topBarHeight = 60;
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        return {
-            x: Math.max(size.w / 2 + margin, Math.min(width - size.w / 2 - margin, pos.x)),
-            y: Math.max(size.h / 2 + margin + topBarHeight, Math.min(height - size.h / 2 - margin, pos.y))
-        };
+        return clampWithinViewport(pos, size, {
+            margin: isMobileLayout ? 12 : 10,
+            topOffset: isMobileLayout ? 112 : 60,
+            bottomOffset: isMobileLayout ? 20 : 10
+        });
     };
 
     // Utility: Get z-index for an element based on stacking order
@@ -291,7 +521,7 @@ function App() {
     // Auto-Connect Model on Start (Only after Auth and devices loaded)
     useEffect(() => {
         // Only auto-connect once: when socket connected, authenticated, and devices loaded
-        if (isConnected && isAuthenticated && socketConnected && micDevices.length > 0 && !hasAutoConnectedRef.current) {
+        if (!isRemoteBrowserClient && isConnected && isAuthenticated && socketConnected && micDevices.length > 0 && !hasAutoConnectedRef.current) {
             hasAutoConnectedRef.current = true;
 
             // Trigger Kasa and Printer Discovery
@@ -313,18 +543,35 @@ function App() {
                 });
             }, 500);
         }
-    }, [isConnected, isAuthenticated, socketConnected, micDevices, selectedMicId]);
+    }, [isConnected, isAuthenticated, socketConnected, micDevices, selectedMicId, isRemoteBrowserClient]);
 
     useEffect(() => {
         // Socket IO Setup
-        socket.on('connect', () => {
+        const handleConnect = () => {
             setStatus('Connected');
             setSocketConnected(true);
+            setConnectionIssue('');
             socket.emit('get_settings');
-        });
-        socket.on('disconnect', () => {
+        };
+        const handleDisconnect = () => {
             setStatus('Disconnected');
             setSocketConnected(false);
+            setConnectionIssue('Connection to the backend was lost. Reconnecting...');
+        };
+        const handleConnectError = (error) => {
+            console.error('Socket connect error:', error);
+            setSocketConnected(false);
+            setConnectionIssue(error?.message ? `Backend unavailable: ${error.message}` : 'Backend unavailable. Check that the server is running on the host machine.');
+        };
+
+        socket.on('connect', handleConnect);
+        socket.on('disconnect', handleDisconnect);
+        socket.on('connect_error', handleConnectError);
+        socket.io.on('reconnect_attempt', (attempt) => {
+            setConnectionIssue(`Reconnecting to the backend (${attempt})...`);
+        });
+        socket.io.on('reconnect', () => {
+            setConnectionIssue('');
         });
         socket.on('status', (data) => {
             addMessage('System', data.msg);
@@ -437,6 +684,22 @@ function App() {
                 }));
             }
         });
+        socket.on('video_content_update', (data) => {
+            setVideoContentData(prev => prev ? { ...prev, ...data } : { ...data });
+            setVideoContentStatus(data.status || 'idle');
+            setShowVideoStudioWindow(true);
+            if (!elementPositions.videoContent) {
+                const size = elementSizes.videoContent || { w: 960, h: 720 };
+                const clamped = clampToViewport({ x: window.innerWidth / 2, y: window.innerHeight / 2 }, size);
+                setElementPositions(prev => ({
+                    ...prev,
+                    videoContent: clamped
+                }));
+            }
+        });
+        socket.on('gemini_key_status', (data) => {
+            setGeminiKeyStatus(data);
+        });
 
         // Handle streaming transcription
         socket.on('transcription', (data) => {
@@ -542,90 +805,20 @@ function App() {
 
 
 
-        // Get All Media Devices (Microphones, Speakers, Webcams)
-        navigator.mediaDevices.enumerateDevices().then(devs => {
-            const audioInputs = devs.filter(d => d.kind === 'audioinput');
-            const audioOutputs = devs.filter(d => d.kind === 'audiooutput');
-            const videoInputs = devs.filter(d => d.kind === 'videoinput');
-
-            setMicDevices(audioInputs);
-            setSpeakerDevices(audioOutputs);
-            setWebcamDevices(videoInputs);
-
-            // Restore saved microphone or use first available
-            const savedMicId = localStorage.getItem('selectedMicId');
-            if (savedMicId && audioInputs.some(d => d.deviceId === savedMicId)) {
-                setSelectedMicId(savedMicId);
-            } else if (audioInputs.length > 0) {
-                setSelectedMicId(audioInputs[0].deviceId);
-            }
-
-            // Restore saved speaker or use first available
-            const savedSpeakerId = localStorage.getItem('selectedSpeakerId');
-            if (savedSpeakerId && audioOutputs.some(d => d.deviceId === savedSpeakerId)) {
-                setSelectedSpeakerId(savedSpeakerId);
-            } else if (audioOutputs.length > 0) {
-                setSelectedSpeakerId(audioOutputs[0].deviceId);
-            }
-
-            // Restore saved webcam or use first available
-            const savedWebcamId = localStorage.getItem('selectedWebcamId');
-            if (savedWebcamId && videoInputs.some(d => d.deviceId === savedWebcamId)) {
-                setSelectedWebcamId(savedWebcamId);
-            } else if (videoInputs.length > 0) {
-                setSelectedWebcamId(videoInputs[0].deviceId);
-            }
-        });
-
-        // Initialize Hand Landmarker
-        const initHandLandmarker = async () => {
-            try {
-                console.log("Initializing HandLandmarker...");
-
-                // 1. Verify Model File
-                console.log("Fetching model file...");
-                const response = await fetch('/hand_landmarker.task');
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
-                }
-                console.log("Model file found:", response.headers.get('content-type'), response.headers.get('content-length'));
-
-                // 2. Initialize Vision
-                console.log("Initializing FilesetResolver...");
-                const vision = await FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
-                );
-                console.log("FilesetResolver initialized.");
-
-                // 3. Create Landmarker
-                console.log("Creating HandLandmarker (GPU)...");
-                handLandmarkerRef.current = await HandLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: `/hand_landmarker.task`,
-                        delegate: "GPU" // Enable GPU acceleration
-                    },
-                    runningMode: "VIDEO",
-                    numHands: 1
-                });
-                console.log("HandLandmarker initialized successfully!");
-                addMessage('System', 'Hand Tracking Ready');
-
-            } catch (error) {
-                console.error("Failed to initialize HandLandmarker:", error);
-                addMessage('System', `Hand Tracking Error: ${error.message}`);
-            }
-        };
-        initHandLandmarker();
+        refreshMediaDevices();
 
         return () => {
-            socket.off('connect');
-            socket.off('disconnect');
+            socket.off('connect', handleConnect);
+            socket.off('disconnect', handleDisconnect);
+            socket.off('connect_error', handleConnectError);
             socket.off('status');
             socket.off('audio_data');
             socket.off('cad_data');
             socket.off('cad_thought');
             socket.off('cad_status');
             socket.off('browser_frame');
+            socket.off('video_content_update');
+            socket.off('gemini_key_status');
             socket.off('transcription');
             socket.off('tool_confirmation_request');
             socket.off('kasa_devices');
@@ -638,6 +831,75 @@ function App() {
             stopVideo();
         };
     }, []);
+
+    useEffect(() => {
+        const handleOnline = () => {
+            setIsOnline(true);
+            setConnectionIssue('');
+            if (!socket.connected) {
+                socket.connect();
+            }
+        };
+
+        const handleOffline = () => {
+            setIsOnline(false);
+            setConnectionIssue('Device is offline.');
+        };
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isHandTrackingEnabled || handLandmarkerRef.current || !secureMediaAvailable) {
+            return;
+        }
+
+        let cancelled = false;
+
+        const initHandLandmarker = async () => {
+            try {
+                console.log('Initializing HandLandmarker...');
+                const response = await fetch('/hand_landmarker.task');
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+                }
+
+                const visionModule = await import('@mediapipe/tasks-vision');
+                const vision = await visionModule.FilesetResolver.forVisionTasks(
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm'
+                );
+
+                if (cancelled) return;
+
+                handConnectionsRef.current = visionModule.HandLandmarker.HAND_CONNECTIONS;
+                handLandmarkerRef.current = await visionModule.HandLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: '/hand_landmarker.task',
+                        delegate: isMobileLayout ? 'CPU' : 'GPU'
+                    },
+                    runningMode: 'VIDEO',
+                    numHands: 1
+                });
+                addMessage('System', 'Hand Tracking Ready');
+            } catch (error) {
+                console.error('Failed to initialize HandLandmarker:', error);
+                setMediaWarning(getMediaErrorMessage(error, 'Camera'));
+                addMessage('System', `Hand Tracking Error: ${error.message}`);
+            }
+        };
+
+        initHandLandmarker();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isHandTrackingEnabled, isMobileLayout, secureMediaAvailable]);
 
     // Initial check in case we are already connected (fix race condition)
     useEffect(() => {
@@ -671,17 +933,25 @@ function App() {
 
     // Start/Stop Mic Visualizer
     useEffect(() => {
-        if (selectedMicId) {
+        if (selectedMicId && !isRemoteBrowserClient && secureMediaAvailable) {
             startMicVisualizer(selectedMicId);
         }
-    }, [selectedMicId]);
+    }, [selectedMicId, isRemoteBrowserClient, secureMediaAvailable]);
 
     const startMicVisualizer = async (deviceId) => {
         stopMicVisualizer();
+
+        if (!secureMediaAvailable || isRemoteBrowserClient) {
+            return;
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: { deviceId: { exact: deviceId } }
             });
+
+            setMediaPermissions(prev => ({ ...prev, audio: true }));
+            setMediaWarning('');
 
             audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
             analyserRef.current = audioContextRef.current.createAnalyser();
@@ -701,6 +971,7 @@ function App() {
             updateMicData();
         } catch (err) {
             console.error("Error accessing microphone:", err);
+            setMediaWarning(getMediaErrorMessage(err, 'Microphone'));
         }
     };
 
@@ -711,6 +982,11 @@ function App() {
     };
 
     const startVideo = async () => {
+        if (!secureMediaAvailable) {
+            setMediaWarning('Camera access needs HTTPS or localhost in mobile browsers.');
+            return;
+        }
+
         try {
             // Request 1080p resolution with selected webcam
             const constraints = {
@@ -727,6 +1003,8 @@ function App() {
             }
 
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            setMediaPermissions(prev => ({ ...prev, video: true }));
+            setMediaWarning('');
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
                 videoRef.current.play();
@@ -748,6 +1026,7 @@ function App() {
 
         } catch (err) {
             console.error("Error accessing camera:", err);
+            setMediaWarning(getMediaErrorMessage(err, 'Camera'));
             addMessage('System', 'Error accessing camera');
         }
     };
@@ -969,7 +1248,7 @@ function App() {
                 if (isFist) {
                     if (!activeDragElementRef.current) {
                         // Only check popup windows (draggable elements)
-                        const draggableElements = ['cad', 'browser', 'kasa', 'printer'];
+                        const draggableElements = ['cad', 'browser', 'videoContent', 'kasa', 'printer'];
 
                         for (const id of draggableElements) {
                             const el = document.getElementById(id);
@@ -1038,7 +1317,10 @@ function App() {
         ctx.lineWidth = 2;
 
         // Connections
-        const connections = HandLandmarker.HAND_CONNECTIONS;
+        const connections = handConnectionsRef.current;
+        if (!connections?.length) {
+            return;
+        }
         for (const connection of connections) {
             const start = landmarks[connection.start];
             const end = landmarks[connection.end];
@@ -1063,7 +1345,11 @@ function App() {
         if (isVideoOn) {
             stopVideo();
         } else {
-            startVideo();
+            requestMediaAccess({ video: true }).then((granted) => {
+                if (granted) {
+                    startVideo();
+                }
+            });
         }
     };
 
@@ -1072,19 +1358,38 @@ function App() {
     };
 
     const togglePower = () => {
+        if (isRemoteBrowserClient) {
+            setMediaWarning('Remote mobile mode can control windows and devices, but live voice still uses the host desktop audio path.');
+            return;
+        }
+
+        if (!secureMediaAvailable) {
+            setMediaWarning('Microphone access needs HTTPS or localhost in mobile browsers.');
+            return;
+        }
+
         if (isConnected) {
             socket.emit('stop_audio');
             setIsConnected(false);
             setIsMuted(false); // Reset mute state
         } else {
-            const index = micDevices.findIndex(d => d.deviceId === selectedMicId);
-            socket.emit('start_audio', { device_index: index >= 0 ? index : null });
-            setIsConnected(true);
-            setIsMuted(false); // Start unmuted
+            requestMediaAccess({ audio: true }).then((granted) => {
+                if (!granted) return;
+
+                const index = micDevices.findIndex(d => d.deviceId === selectedMicId);
+                socket.emit('start_audio', { device_index: index >= 0 ? index : null });
+                setIsConnected(true);
+                setIsMuted(false);
+            });
         }
     };
 
     const toggleMute = () => {
+        if (isRemoteBrowserClient) {
+            setMediaWarning('Mute control is disabled in remote mobile mode because audio stays on the host desktop path.');
+            return;
+        }
+
         if (!isConnected) return; // Can't mute if not connected
 
         if (isMuted) {
@@ -1104,14 +1409,23 @@ function App() {
         }
     };
 
-    const handleMinimize = () => ipcRenderer.send('window-minimize');
-    const handleMaximize = () => ipcRenderer.send('window-maximize');
+    const handleMinimize = () => ipcRenderer?.send('window-minimize');
+    const handleMaximize = () => ipcRenderer?.send('window-maximize');
 
     // Close Application - memory is now actively saved to project, no prompt needed
     const handleCloseRequest = () => {
         // Emit shutdown signal to backend for graceful shutdown
         // Use volatile emit with timeout fallback to ensure window closes even if server is unresponsive
-        const closeWindow = () => ipcRenderer.send('window-close');
+        const closeWindow = () => {
+            if (ipcRenderer) {
+                ipcRenderer.send('window-close');
+                return;
+            }
+
+            if (typeof window !== 'undefined') {
+                window.close();
+            }
+        };
 
         if (socket.connected) {
             console.log('[APP] Sending shutdown signal to backend...');
@@ -1340,10 +1654,14 @@ function App() {
         setShowPrinterWindow(!showPrinterWindow);
     };
 
+    const toggleVideoStudioWindow = () => {
+        setShowVideoStudioWindow(!showVideoStudioWindow);
+    };
+
 
 
     return (
-        <div className="h-screen w-screen bg-black text-cyan-100 font-mono overflow-hidden flex flex-col relative selection:bg-cyan-900 selection:text-white">
+        <div className={`${isMobileLayout ? 'min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto' : 'h-screen w-screen overflow-hidden'} bg-black text-cyan-100 font-mono flex flex-col relative selection:bg-cyan-900 selection:text-white`}>
 
             {/* --- PREMIUM UI LAYER --- */}
 
@@ -1357,11 +1675,13 @@ function App() {
              */}
 
             {isLockScreenVisible && (
-                <AuthLock
-                    socket={socket}
-                    onAuthenticated={() => setIsAuthenticated(true)}
-                    onAnimationComplete={() => setIsLockScreenVisible(false)}
-                />
+                <Suspense fallback={<LoadingPanel label="Loading auth..." />}>
+                    <AuthLock
+                        socket={socket}
+                        onAuthenticated={() => setIsAuthenticated(true)}
+                        onAnimationComplete={() => setIsLockScreenVisible(false)}
+                    />
+                </Suspense>
             )}
 
             {/* --- PREMIUM UI LAYER --- */}
@@ -1394,8 +1714,8 @@ function App() {
             />
 
             {/* Top Bar (Draggable) */}
-            <div className="z-50 flex items-center justify-between p-2 border-b border-cyan-500/20 bg-black/40 backdrop-blur-md select-none sticky top-0" style={{ WebkitAppRegion: 'drag' }}>
-                <div className="flex items-center gap-4 pl-2">
+            <div className={`z-50 flex items-center justify-between ${isMobileLayout ? 'flex-wrap gap-3 px-3 py-3' : 'p-2'} border-b border-cyan-500/20 bg-black/40 backdrop-blur-md select-none sticky top-0`} style={isElectron ? { WebkitAppRegion: 'drag' } : undefined}>
+                <div className={`flex items-center ${isMobileLayout ? 'flex-wrap gap-2 pl-0' : 'gap-4 pl-2'} min-w-0`}>
                     <h1 className="text-xl font-bold tracking-[0.2em] text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
                         A.D.A
                     </h1>
@@ -1422,45 +1742,96 @@ function App() {
                             <span>{kasaDevices.length} Device{kasaDevices.length !== 1 ? 's' : ''}</span>
                         </div>
                     )}
+                    {geminiKeyStatus?.slot && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-cyan-300 border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 rounded ml-2">
+                            <span>AI</span>
+                            <span>Key {geminiKeyStatus.slot}</span>
+                            <span className="uppercase opacity-70">{geminiKeyStatus.state}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Top Visualizer (User Mic) */}
-                <div className="flex-1 flex justify-center mx-4">
-                    <TopAudioBar audioData={micAudioData} />
+                <div className={`flex-1 flex ${isMobileLayout ? 'order-3 basis-full justify-start' : 'justify-center mx-4'} min-w-0`}>
+                    <div className={`${isMobileLayout ? 'w-full max-w-full overflow-hidden' : ''}`}>
+                        <TopAudioBar audioData={micAudioData} />
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-2 pr-2" style={{ WebkitAppRegion: 'no-drag' }}>
+                <div className="flex items-center gap-2 pr-2" style={isElectron ? { WebkitAppRegion: 'no-drag' } : undefined}>
                     {/* Live Clock */}
                     <div className="flex items-center gap-1.5 text-[11px] text-cyan-300/70 font-mono px-2">
                         <Clock size={12} className="text-cyan-500/50" />
                         <span>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
-                    <button onClick={handleMinimize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
-                        <Minus size={18} />
-                    </button>
-                    <button onClick={handleMaximize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
-                        <div className="w-[14px] h-[14px] border-2 border-current rounded-[2px]" />
-                    </button>
-                    <button onClick={handleCloseRequest} className="p-1 hover:bg-red-900/50 rounded text-red-500 transition-colors">
-                        <X size={18} />
-                    </button>
+                    {isElectron && (
+                        <>
+                            <button onClick={handleMinimize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
+                                <Minus size={18} />
+                            </button>
+                            <button onClick={handleMaximize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
+                                <div className="w-[14px] h-[14px] border-2 border-current rounded-[2px]" />
+                            </button>
+                            <button onClick={handleCloseRequest} className="p-1 hover:bg-red-900/50 rounded text-red-500 transition-colors">
+                                <X size={18} />
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
+            {(connectionBannerMessage || mediaWarning || (!secureMediaAvailable && !isElectron)) && (
+                <div className="sticky top-[72px] z-[60] px-3 pt-2">
+                    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 rounded-2xl border border-cyan-500/20 bg-slate-950/90 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.08)] backdrop-blur-xl">
+                        <ShieldAlert size={14} className="text-cyan-400" />
+                        <span className="flex-1 min-w-[14rem]">{mediaWarning || connectionBannerMessage || 'Mobile browser safeguards are active.'}</span>
+                        {!socketConnected && (
+                            <button
+                                onClick={() => socket.connect()}
+                                className="inline-flex items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-widest text-cyan-300 transition-colors hover:bg-cyan-500/20"
+                            >
+                                <RefreshCw size={12} /> Retry
+                            </button>
+                        )}
+                        {!mediaPermissions.audio && secureMediaAvailable && !isRemoteBrowserClient && (
+                            <button
+                                onClick={() => requestMediaAccess({ audio: true })}
+                                className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-widest text-cyan-300 transition-colors hover:bg-cyan-500/20"
+                            >
+                                Allow Mic
+                            </button>
+                        )}
+                        {!mediaPermissions.video && secureMediaAvailable && (
+                            <button
+                                onClick={() => requestMediaAccess({ video: true })}
+                                className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-widest text-cyan-300 transition-colors hover:bg-cyan-500/20"
+                            >
+                                Allow Camera
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Main Content */}
-            <div className="flex-1 relative z-10 flex flex-col items-center justify-center">
+            <div className={`flex-1 relative z-10 flex flex-col items-center ${isMobileLayout ? 'justify-start px-3 pt-3 pb-6 gap-3' : 'justify-center'}`}>
                 {/* Central Visualizer (AI Audio) */}
                 <div
                     id="visualizer"
-                    className={`absolute flex items-center justify-center transition-all duration-200 
+                    className={`${isMobileLayout ? 'relative w-full max-w-full' : 'absolute'} flex items-center justify-center transition-all duration-200 
                         backdrop-blur-xl bg-black/30 border border-white/10 shadow-2xl overflow-visible
                         ${isModularMode ? (activeDragElement === 'visualizer' ? 'ring-2 ring-green-500 bg-green-500/10' : 'ring-1 ring-yellow-500/30 bg-yellow-500/5') + ' rounded-2xl pointer-events-auto' : 'rounded-2xl pointer-events-none'}
                     `}
                     style={{
-                        left: elementPositions.visualizer.x,
-                        top: elementPositions.visualizer.y,
-                        transform: 'translate(-50%, -50%)',
-                        width: elementSizes.visualizer.w,
+                        ...(isMobileLayout ? {
+                            width: '100%',
+                            maxWidth: `${elementSizes.visualizer.w}px`
+                        } : {
+                            left: elementPositions.visualizer.x,
+                            top: elementPositions.visualizer.y,
+                            transform: 'translate(-50%, -50%)',
+                            width: elementSizes.visualizer.w
+                        }),
                         height: elementSizes.visualizer.h
                     }}
                     onMouseDown={(e) => handleMouseDown(e, 'visualizer')}
@@ -1480,13 +1851,13 @@ function App() {
 
                 {/* Video Feed Overlay */}
                 {/* Floating Project Label */}
-                <div className="absolute top-[70px] left-1/2 -translate-x-1/2 text-cyan-500 text-xs font-mono tracking-widest pointer-events-none z-50 bg-black/50 px-2 py-1 rounded backdrop-blur-sm border border-cyan-500/20">
+                <div className={`${isMobileLayout ? 'relative top-0 left-0 translate-x-0' : 'absolute top-[70px] left-1/2 -translate-x-1/2'} text-cyan-500 text-xs font-mono tracking-widest pointer-events-none z-50 bg-black/50 px-2 py-1 rounded backdrop-blur-sm border border-cyan-500/20`}>
                     PROJECT: {currentProject?.toUpperCase()}
                 </div>
 
                 <div
                     id="video"
-                    className={`fixed bottom-4 right-4 transition-all duration-200 
+                    className={`fixed ${isMobileLayout ? 'top-[calc(env(safe-area-inset-top)+7rem)] right-3' : 'bottom-4 right-4'} transition-all duration-200 
                         ${isVideoOn ? 'opacity-100' : 'opacity-0 pointer-events-none'} 
                         backdrop-blur-md bg-black/40 border border-white/10 shadow-xl rounded-xl
                     `}
@@ -1494,7 +1865,7 @@ function App() {
                 >
                     <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none mix-blend-overlay"></div>
                     {/* Compact Display Container (1080p Source) */}
-                    <div className="relative border border-cyan-500/30 rounded-lg overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.1)] w-80 aspect-video bg-black/80">
+                    <div className="relative border border-cyan-500/30 rounded-lg overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.1)] aspect-video bg-black/80" style={{ width: `${elementSizes.video.w}px` }}>
                         {/* Hidden Video Element (Source) */}
                         <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover opacity-0" />
 
@@ -1511,40 +1882,51 @@ function App() {
 
                 {/* Settings Modal - Moved outside Video so it shows independently */}
                 {showSettings && (
-                    <SettingsWindow
-                        socket={socket}
-                        micDevices={micDevices}
-                        speakerDevices={speakerDevices}
-                        webcamDevices={webcamDevices}
-                        selectedMicId={selectedMicId}
-                        setSelectedMicId={setSelectedMicId}
-                        selectedSpeakerId={selectedSpeakerId}
-                        setSelectedSpeakerId={setSelectedSpeakerId}
-                        selectedWebcamId={selectedWebcamId}
-                        setSelectedWebcamId={setSelectedWebcamId}
-                        cursorSensitivity={cursorSensitivity}
-                        setCursorSensitivity={setCursorSensitivity}
-                        isCameraFlipped={isCameraFlipped}
-                        setIsCameraFlipped={setIsCameraFlipped}
-                        handleFileUpload={handleFileUpload}
-                        onClose={() => setShowSettings(false)}
-                    />
+                    <Suspense fallback={<LoadingPanel label="Loading settings..." />}>
+                        <SettingsWindow
+                            socket={socket}
+                            micDevices={micDevices}
+                            speakerDevices={speakerDevices}
+                            webcamDevices={webcamDevices}
+                            selectedMicId={selectedMicId}
+                            setSelectedMicId={setSelectedMicId}
+                            selectedSpeakerId={selectedSpeakerId}
+                            setSelectedSpeakerId={setSelectedSpeakerId}
+                            selectedWebcamId={selectedWebcamId}
+                            setSelectedWebcamId={setSelectedWebcamId}
+                            cursorSensitivity={cursorSensitivity}
+                            setCursorSensitivity={setCursorSensitivity}
+                            isCameraFlipped={isCameraFlipped}
+                            setIsCameraFlipped={setIsCameraFlipped}
+                            handleFileUpload={handleFileUpload}
+                            mobileLayout={isMobileLayout}
+                            onClose={() => setShowSettings(false)}
+                        />
+                    </Suspense>
                 )}
 
                 {/* CAD Window Overlay - Moved outside of Video so it can show independently */}
                 {showCadWindow && (
                     <div
                         id="cad"
-                        className={`absolute flex flex-col transition-all duration-200 
+                        className={`${isMobileLayout ? 'fixed' : 'absolute'} flex flex-col transition-all duration-200 
                         backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-2xl
                         ${activeDragElement === 'cad' ? 'ring-2 ring-green-500 bg-green-500/10' : ''}
                     `}
                         style={{
-                            left: elementPositions.cad?.x || window.innerWidth / 2,
-                            top: elementPositions.cad?.y || window.innerHeight / 2,
-                            transform: 'translate(-50%, -50%)',
-                            width: `${elementSizes.cad.w}px`,
-                            height: `${elementSizes.cad.h}px`,
+                            ...(isMobileLayout ? {
+                                left: '50%',
+                                top: 'calc(env(safe-area-inset-top) + 6.5rem)',
+                                transform: 'translateX(-50%)',
+                                width: `min(calc(100vw - 1.5rem), ${elementSizes.cad.w}px)`,
+                                height: `min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), ${elementSizes.cad.h}px)`
+                            } : {
+                                left: elementPositions.cad?.x || window.innerWidth / 2,
+                                top: elementPositions.cad?.y || window.innerHeight / 2,
+                                transform: 'translate(-50%, -50%)',
+                                width: `${elementSizes.cad.w}px`,
+                                height: `${elementSizes.cad.h}px`
+                            }),
                             pointerEvents: 'auto',
                             zIndex: getZIndex('cad')
                         }}
@@ -1565,13 +1947,16 @@ function App() {
                         </div>
                         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none mix-blend-overlay z-10"></div>
                         <div className="relative z-20 flex-1 min-h-0">
-                            <CadWindow
-                                data={cadData}
-                                thoughts={cadThoughts}
-                                retryInfo={cadRetryInfo}
-                                onClose={() => setShowCadWindow(false)}
-                                socket={socket}
-                            />
+                            <Suspense fallback={<LoadingPanel label="Loading CAD..." />}>
+                                <CadWindow
+                                    data={cadData}
+                                    thoughts={cadThoughts}
+                                    retryInfo={cadRetryInfo}
+                                    onClose={() => setShowCadWindow(false)}
+                                    socket={socket}
+                                    mobileLayout={isMobileLayout}
+                                />
+                            </Suspense>
                         </div>
                     </div>
                 )}
@@ -1581,16 +1966,24 @@ function App() {
                 {showBrowserWindow && (
                     <div
                         id="browser"
-                        className={`absolute flex flex-col transition-all duration-200 
+                        className={`${isMobileLayout ? 'fixed' : 'absolute'} flex flex-col transition-all duration-200 
                         backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-lg
                         ${activeDragElement === 'browser' ? 'ring-2 ring-green-500 bg-green-500/10' : ''}
                     `}
                         style={{
-                            left: elementPositions.browser?.x || window.innerWidth / 2 - 200,
-                            top: elementPositions.browser?.y || window.innerHeight / 2,
-                            transform: 'translate(-50%, -50%)',
-                            width: `${elementSizes.browser.w}px`,
-                            height: `${elementSizes.browser.h}px`,
+                            ...(isMobileLayout ? {
+                                left: '50%',
+                                top: 'calc(env(safe-area-inset-top) + 6.5rem)',
+                                transform: 'translateX(-50%)',
+                                width: `min(calc(100vw - 1.5rem), ${elementSizes.browser.w}px)`,
+                                height: `min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), ${elementSizes.browser.h}px)`
+                            } : {
+                                left: elementPositions.browser?.x || window.innerWidth / 2 - 200,
+                                top: elementPositions.browser?.y || window.innerHeight / 2,
+                                transform: 'translate(-50%, -50%)',
+                                width: `${elementSizes.browser.w}px`,
+                                height: `${elementSizes.browser.h}px`
+                            }),
                             pointerEvents: 'auto',
                             zIndex: getZIndex('browser')
                         }}
@@ -1598,13 +1991,51 @@ function App() {
                     >
                         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none mix-blend-overlay z-10"></div>
                         <div className="relative z-20 w-full h-full">
-                            <BrowserWindow
-                                imageSrc={browserData.image}
-                                logs={browserData.logs}
-                                onClose={() => setShowBrowserWindow(false)}
-                                socket={socket}
-                            />
+                            <Suspense fallback={<LoadingPanel label="Loading browser..." />}>
+                                <BrowserWindow
+                                    imageSrc={browserData.image}
+                                    logs={browserData.logs}
+                                    onClose={() => setShowBrowserWindow(false)}
+                                    socket={socket}
+                                    mobileLayout={isMobileLayout}
+                                />
+                            </Suspense>
                         </div>
+                    </div>
+                )}
+
+                {showVideoStudioWindow && (
+                    <div
+                        id="videoContent"
+                        className={`${isMobileLayout ? 'fixed' : 'absolute'} flex flex-col transition-all duration-200 backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-2xl ${activeDragElement === 'videoContent' ? 'ring-2 ring-green-500 bg-green-500/10' : ''}`}
+                        style={{
+                            ...(isMobileLayout ? {
+                                left: '50%',
+                                top: 'calc(env(safe-area-inset-top) + 6.5rem)',
+                                transform: 'translateX(-50%)',
+                                width: `min(calc(100vw - 1.5rem), ${elementSizes.videoContent.w}px)`,
+                                height: `min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), ${elementSizes.videoContent.h}px)`
+                            } : {
+                                left: elementPositions.videoContent?.x || window.innerWidth / 2,
+                                top: elementPositions.videoContent?.y || window.innerHeight / 2,
+                                transform: 'translate(-50%, -50%)',
+                                width: `${elementSizes.videoContent.w}px`,
+                                height: `${elementSizes.videoContent.h}px`
+                            }),
+                            pointerEvents: 'auto',
+                            zIndex: getZIndex('videoContent')
+                        }}
+                        onMouseDown={(e) => handleMouseDown(e, 'videoContent')}
+                    >
+                        <Suspense fallback={<LoadingPanel label="Loading video studio..." />}>
+                            <VideoContentWindow
+                                socket={socket}
+                                data={videoContentData}
+                                status={videoContentStatus}
+                                onClose={() => setShowVideoStudioWindow(false)}
+                                mobileLayout={isMobileLayout}
+                            />
+                        </Suspense>
                     </div>
                 )}
 
@@ -1620,11 +2051,12 @@ function App() {
                     position={elementPositions.chat}
                     width={elementSizes.chat.w}
                     height={elementSizes.chat.h}
+                    mobileLayout={isMobileLayout}
                     onMouseDown={(e) => handleMouseDown(e, 'chat')}
                 />
 
                 {/* Footer Controls / Tools Module */}
-                <div className="z-20 flex justify-center pb-10 pointer-events-none">
+                <div className={`z-20 flex justify-center ${isMobileLayout ? 'w-full pb-2 pointer-events-auto' : 'pb-10 pointer-events-none'}`}>
                     <ToolsModule
                         isConnected={isConnected}
                         isMuted={isMuted}
@@ -1644,47 +2076,58 @@ function App() {
                         showCadWindow={showCadWindow}
                         onToggleBrowser={() => setShowBrowserWindow(!showBrowserWindow)}
                         showBrowserWindow={showBrowserWindow}
+                        onToggleVideoStudio={toggleVideoStudioWindow}
+                        showVideoStudioWindow={showVideoStudioWindow}
                         activeDragElement={activeDragElement}
                         position={elementPositions.tools}
+                        mobileLayout={isMobileLayout}
                         onMouseDown={(e) => handleMouseDown(e, 'tools')}
                     />
                 </div>
 
                 {/* Kasa Window */}
                 {showKasaWindow && (
-                    <KasaWindow
-                        socket={socket}
-                        position={elementPositions.kasa}
-                        activeDragElement={activeDragElement}
-                        setActiveDragElement={setActiveDragElement}
-                        devices={kasaDevices}
-                        onClose={() => setShowKasaWindow(false)}
-                        onMouseDown={(e) => handleMouseDown(e, 'kasa')}
-                        zIndex={getZIndex('kasa')}
-                    />
+                    <Suspense fallback={<LoadingPanel label="Loading devices..." />}>
+                        <KasaWindow
+                            socket={socket}
+                            position={elementPositions.kasa}
+                            activeDragElement={activeDragElement}
+                            setActiveDragElement={setActiveDragElement}
+                            devices={kasaDevices}
+                            onClose={() => setShowKasaWindow(false)}
+                            onMouseDown={(e) => handleMouseDown(e, 'kasa')}
+                            zIndex={getZIndex('kasa')}
+                            mobileLayout={isMobileLayout}
+                        />
+                    </Suspense>
                 )}
 
                 {/* Printer Window */}
                 {showPrinterWindow && (
-                    <PrinterWindow
-                        socket={socket}
-                        onClose={() => setShowPrinterWindow(false)}
-                        position={elementPositions.printer}
-                        onMouseDown={(e) => handleMouseDown(e, 'printer')}
-                        activeDragElement={activeDragElement}
-                        setActiveDragElement={setActiveDragElement}
-                        zIndex={getZIndex('printer')}
-                    />
+                    <Suspense fallback={<LoadingPanel label="Loading printers..." />}>
+                        <PrinterWindow
+                            socket={socket}
+                            onClose={() => setShowPrinterWindow(false)}
+                            position={elementPositions.printer}
+                            onMouseDown={(e) => handleMouseDown(e, 'printer')}
+                            activeDragElement={activeDragElement}
+                            setActiveDragElement={setActiveDragElement}
+                            zIndex={getZIndex('printer')}
+                            mobileLayout={isMobileLayout}
+                        />
+                    </Suspense>
                 )}
 
                 {/* Memory Prompt removed - memory is now actively saved to project */}
 
                 {/* Tool Confirmation Modal */}
-                <ConfirmationPopup
-                    request={confirmationRequest}
-                    onConfirm={handleConfirmTool}
-                    onDeny={handleDenyTool}
-                />
+                <Suspense fallback={null}>
+                    <ConfirmationPopup
+                        request={confirmationRequest}
+                        onConfirm={handleConfirmTool}
+                        onDeny={handleDenyTool}
+                    />
+                </Suspense>
             </div>
         </div>
     );

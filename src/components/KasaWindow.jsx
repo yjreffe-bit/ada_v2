@@ -9,7 +9,8 @@ const KasaWindow = ({
     setActiveDragElement,
     devices,
     onMouseDown,
-    zIndex = 40
+    zIndex = 40,
+    mobileLayout = false
 }) => {
     const [isThinking, setIsThinking] = useState(false);
     const [loadingDevices, setLoadingDevices] = useState({}); // { ip: true/false }
@@ -75,15 +76,24 @@ const KasaWindow = ({
         <div
             id="kasa"
             onMouseDown={onMouseDown}
-            className={`absolute flex flex-col gap-2 p-4 rounded-xl backdrop-blur-md bg-black/60 border border-cyan-500/30 transition-all duration-200 select-none
+            className={`${mobileLayout ? 'fixed' : 'absolute'} flex flex-col gap-2 p-4 rounded-xl backdrop-blur-md bg-black/60 border border-cyan-500/30 transition-all duration-200 select-none
                 ${activeDragElement === 'kasa' ? 'ring-2 ring-green-500 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 'shadow-[0_0_20px_rgba(6,182,212,0.1)]'}
             `}
             style={{
-                left: position.x,
-                top: position.y,
-                width: '320px',
-                minHeight: '200px',
-                transform: 'translate(-50%, -50%)',
+                ...(mobileLayout ? {
+                    left: '50%',
+                    top: 'calc(env(safe-area-inset-top) + 6.5rem)',
+                    width: 'min(calc(100vw - 1.5rem), 420px)',
+                    minHeight: '220px',
+                    maxHeight: 'min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), 560px)',
+                    transform: 'translateX(-50%)'
+                } : {
+                    left: position.x,
+                    top: position.y,
+                    width: '320px',
+                    minHeight: '200px',
+                    transform: 'translate(-50%, -50%)'
+                }),
                 zIndex: zIndex
             }}
         >

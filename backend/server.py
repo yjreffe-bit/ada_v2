@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import os
 
 # Fix for asyncio subprocess support on Windows
 # MUST BE SET BEFORE OTHER IMPORTS
@@ -9,6 +10,7 @@ if sys.platform == 'win32':
 import socketio
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 import asyncio
 import threading
 import sys
@@ -30,6 +32,8 @@ from kasa_agent import KasaAgent
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 app = FastAPI()
 app_socketio = socketio.ASGIApp(sio, app)
+PROJECTS_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "projects"
+app.mount("/artifacts", StaticFiles(directory=str(PROJECTS_ROOT), check_dir=False), name="artifacts")
 
 import signal
 
@@ -61,6 +65,7 @@ DEFAULT_SETTINGS = {
     "face_auth_enabled": False, # Default OFF as requested
     "tool_permissions": {
         "generate_cad": True,
+        "generate_content_video": True,
         "run_web_agent": True,
         "write_file": True,
         "read_directory": True,
@@ -223,6 +228,17 @@ async def start_audio(sid, data=None):
     def on_web_data(data):
         print(f"Sending Browser data to frontend: {len(data.get('log', ''))} chars logs")
         asyncio.create_task(sio.emit('browser_frame', data))
+
+    def on_video_content_data(data):
+        print(f"Sending video content update to frontend: {data.get('status', 'unknown')}")
+        saved_path = data.get('saved_video_path') or data.get('video_path')
+        if saved_path:
+            try:
+                rel_path = Path(saved_path).resolve().relative_to(PROJECTS_ROOT.resolve())
+                data["preview_url"] = f"/artifacts/{rel_path.as_posix()}"
+            except Exception:
+                pass
+        asyncio.create_task(sio.emit('video_content_update', data))
         
     # Callback to send Transcription data to frontend
     def on_transcription(data):
@@ -268,6 +284,10 @@ async def start_audio(sid, data=None):
         print(f"Sending Error to frontend: {msg}")
         asyncio.create_task(sio.emit('error', {'msg': msg}))
 
+    def on_gemini_key_status(data):
+        print(f"Sending Gemini key status: slot={data.get('slot')} source={data.get('source')} state={data.get('state')}")
+        asyncio.create_task(sio.emit('gemini_key_status', data))
+
     # Initialize ADA
     try:
         print(f"Initializing AudioLoop with device_index={device_index}")
@@ -276,6 +296,7 @@ async def start_audio(sid, data=None):
             on_audio_data=on_audio_data,
             on_cad_data=on_cad_data,
             on_web_data=on_web_data,
+            on_video_content_data=on_video_content_data,
             on_transcription=on_transcription,
             on_tool_confirmation=on_tool_confirmation,
             on_cad_status=on_cad_status,
@@ -283,6 +304,7 @@ async def start_audio(sid, data=None):
             on_project_update=on_project_update,
             on_device_update=on_device_update,
             on_error=on_error,
+            on_gemini_key_status=on_gemini_key_status,
 
             input_device_index=device_index,
             input_device_name=device_name,
@@ -695,6 +717,33 @@ async def prompt_web_agent(sid, data):
         await sio.emit('error', {'msg': f"Web Agent Error: {str(e)}"})
 
 @sio.event
+async def generate_content_video(sid, data):
+    print(f"Received content video generation request: {data.get('topic')}")
+
+    if not audio_loop or not audio_loop.video_content_agent:
+        await sio.emit('error', {'msg': "Video content generator not available"})
+        return
+
+    request = {
+        "topic": data.get("topic", "Untitled video"),
+        "niche": data.get("niche", "general"),
+        "narrator_style": data.get("narrator_style", "storyteller"),
+        "video_style": data.get("video_style", "cinematic"),
+        "duration_seconds": max(90, int(data.get("duration_seconds", 90))),
+        "include_intro": bool(data.get("include_intro", True)),
+        "include_outro": bool(data.get("include_outro", True)),
+        "aspect_ratio": data.get("aspect_ratio", "9:16"),
+        "platform_targets": data.get("platform_targets", ["YouTube", "TikTok", "Instagram", "Facebook"]),
+    }
+
+    try:
+        await sio.emit('video_content_update', {'status': 'planning', 'message': 'Preparing content video generation...', 'request': request})
+        asyncio.create_task(audio_loop.handle_content_video_request(request))
+    except Exception as e:
+        print(f"Error generating content video: {e}")
+        await sio.emit('error', {'msg': f"Video Content Error: {str(e)}"})
+
+@sio.event
 async def discover_printers(sid):
     print("Received discover_printers request")
     
@@ -979,10 +1028,13 @@ async def update_tool_permissions(sid, data):
     await sio.emit('tool_permissions', SETTINGS["tool_permissions"])
 
 if __name__ == "__main__":
+    host = os.getenv("ADA_HOST", "0.0.0.0")
+    port = int(os.getenv("ADA_PORT", "8000"))
+
     uvicorn.run(
         "server:app_socketio", 
-        host="127.0.0.1", 
-        port=8000, 
+        host=host,
+        port=port,
         reload=False, # Reload enabled causes spawn of worker which might miss the event loop policy patch
         loop="asyncio",
         reload_excludes=["temp_cad_gen.py", "output.stl", "*.stl"]

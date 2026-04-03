@@ -33,6 +33,7 @@ class ProjectManager:
             project_path.mkdir()
             (project_path / "cad").mkdir()
             (project_path / "browser").mkdir()
+            (project_path / "video").mkdir()
             print(f"[ProjectManager] Created project: {safe_name}")
             return True, f"Project '{safe_name}' created."
         return False, f"Project '{safe_name}' already exists."
@@ -86,6 +87,26 @@ class ProjectManager:
             return str(dest_path)
         except Exception as e:
             print(f"[ProjectManager] [ERR] Failed to save artifact: {e}")
+            return None
+
+    def save_video_artifact(self, source_path: str, title: str):
+        """Copies a generated video file to the project's 'video' folder."""
+        if not os.path.exists(source_path):
+            print(f"[ProjectManager] [ERR] Video source file not found: {source_path}")
+            return None
+
+        timestamp = int(time.time())
+        safe_title = "".join([c for c in title if c.isalnum() or c in (' ', '-', '_')])[:40].strip().replace(" ", "_")
+        ext = Path(source_path).suffix or ".mp4"
+        filename = f"{timestamp}_{safe_title or 'content_video'}{ext}"
+        dest_path = self.get_current_project_path() / "video" / filename
+
+        try:
+            shutil.copy2(source_path, dest_path)
+            print(f"[ProjectManager] Saved video artifact to: {dest_path}")
+            return str(dest_path)
+        except Exception as e:
+            print(f"[ProjectManager] [ERR] Failed to save video artifact: {e}")
             return None
 
     def get_project_context(self, max_file_size: int = 10000) -> str:

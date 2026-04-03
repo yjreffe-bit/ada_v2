@@ -53,14 +53,14 @@ const AuthLock = ({ socket, onAuthenticated, onAnimationComplete }) => {
             {/* Background Grid */}
             <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] ${bgGradient} pointer-events-none transition-colors duration-[1500ms]`}></div>
 
-            <div className={`relative flex flex-col items-center gap-6 p-10 border ${borderColor}/30 rounded-lg bg-black/80 backdrop-blur-xl ${shadowColor} transition-all duration-[1500ms]`}>
+            <div className={`relative flex flex-col items-center gap-6 w-[min(92vw,34rem)] p-6 sm:p-10 border ${borderColor}/30 rounded-lg bg-black/80 backdrop-blur-xl ${shadowColor} transition-all duration-[1500ms]`}>
                 <div className={`text-3xl font-bold tracking-[0.3em] uppercase drop-shadow-[0_0_10px_currentColor] flex items-center gap-4 ${themeColor} transition-colors duration-1000`}>
                     {isUnlocking ? <Unlock size={32} /> : <Lock size={32} />}
                     {isUnlocking ? "SYSTEM UNLOCKED" : "SYSTEM LOCKED"}
                 </div>
 
                 {/* Camera Feed Frame */}
-                <div className={`relative w-64 h-64 border-2 ${borderColor}/50 rounded-lg overflow-hidden bg-gray-900 shadow-inner flex items-center justify-center transition-colors duration-500`}>
+                <div className={`relative w-[min(16rem,72vw)] h-[min(16rem,72vw)] border-2 ${borderColor}/50 rounded-lg overflow-hidden bg-gray-900 shadow-inner flex items-center justify-center transition-colors duration-500`}>
                     {frameSrc ? (
                         <img
                             src={frameSrc}

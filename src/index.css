@@ -7,7 +7,17 @@
 body {
   margin: 0;
   background-color: #000;
-  overflow: hidden;
+  overflow-x: hidden;
+  min-height: 100dvh;
+}
+
+html,
+#root {
+  min-height: 100dvh;
+}
+
+:root {
+  color-scheme: dark;
 }
 
 /* Custom Scrollbar Hide */
@@ -30,4 +40,10 @@ body {
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }

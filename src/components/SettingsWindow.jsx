@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 
 const TOOLS = [
     { id: 'generate_cad', label: 'Generate CAD' },
+    { id: 'generate_content_video', label: 'Generate Content Video' },
     { id: 'run_web_agent', label: 'Web Agent' },
     { id: 'create_directory', label: 'Create Folder' },
     { id: 'write_file', label: 'Write File' },
@@ -34,6 +35,7 @@ const SettingsWindow = ({
     isCameraFlipped,
     setIsCameraFlipped,
     handleFileUpload,
+    mobileLayout = false,
     onClose
 }) => {
     const [permissions, setPermissions] = useState({});
@@ -89,13 +91,15 @@ const SettingsWindow = ({
     };
 
     return (
-        <div className="absolute top-20 right-10 bg-black/90 border border-cyan-500/50 p-4 rounded-lg z-50 w-80 backdrop-blur-xl shadow-[0_0_30px_rgba(6,182,212,0.2)]">
+        <div className={`${mobileLayout ? 'fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+6rem)] bottom-3 w-auto overflow-hidden' : 'absolute top-20 right-10 w-80'} bg-black/90 border border-cyan-500/50 p-4 rounded-lg z-50 backdrop-blur-xl shadow-[0_0_30px_rgba(6,182,212,0.2)]`}>
             <div className="flex justify-between items-center mb-4 border-b border-cyan-900/50 pb-2">
                 <h2 className="text-cyan-400 font-bold text-sm uppercase tracking-wider">Settings</h2>
                 <button onClick={onClose} className="text-cyan-600 hover:text-cyan-400">
                     <X size={16} />
                 </button>
             </div>
+
+            <div className={`${mobileLayout ? 'max-h-full overflow-y-auto pr-1' : ''}`}>
 
             {/* Authentication Section */}
             <div className="mb-6">
@@ -229,6 +233,7 @@ const SettingsWindow = ({
                         className="text-xs text-cyan-100 bg-gray-900 border border-cyan-800 rounded p-2 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-cyan-900 file:text-cyan-400 hover:file:bg-cyan-800 cursor-pointer"
                     />
                 </div>
+            </div>
             </div>
         </div>
     );

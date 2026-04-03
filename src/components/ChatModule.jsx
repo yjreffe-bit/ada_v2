@@ -10,6 +10,7 @@ const ChatModule = ({
     position,
     width = 672, // default max-w-2xl
     height,
+    mobileLayout = false,
     onMouseDown
 }) => {
     const messagesEndRef = useRef(null);
@@ -26,15 +27,20 @@ const ChatModule = ({
         <div
             id="chat"
             onMouseDown={onMouseDown}
-            className={`absolute px-6 py-4 pointer-events-auto transition-all duration-200 
+            className={`${mobileLayout ? 'relative w-full max-w-full px-4 py-4' : 'absolute px-6 py-4'} pointer-events-auto transition-all duration-200 
             backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl rounded-2xl
             ${isModularMode ? (activeDragElement === 'chat' ? 'ring-2 ring-green-500' : 'ring-1 ring-yellow-500/30') : ''}
         `}
             style={{
-                left: position.x,
-                top: position.y,
-                transform: 'translate(-50%, 0)', // Aligned top-center
-                width: width,
+                ...(mobileLayout ? {
+                    width: '100%',
+                    maxWidth: `${width}px`
+                } : {
+                    left: position.x,
+                    top: position.y,
+                    transform: 'translate(-50%, 0)',
+                    width: width
+                }),
                 height: height
             }}
         >
@@ -42,7 +48,7 @@ const ChatModule = ({
 
             <div
                 className="flex flex-col gap-3 overflow-y-auto mb-4 scrollbar-hide mask-image-gradient relative z-10"
-                style={{ height: height ? `calc(${height}px - 70px)` : '15rem' }}
+                style={{ height: height ? `calc(${height}px - ${mobileLayout ? 76 : 70}px)` : '15rem' }}
             >
                 {messages.slice(-5).map((msg, i) => (
                     <div key={i} className="text-sm border-l-2 border-cyan-800/50 pl-3 py-1">

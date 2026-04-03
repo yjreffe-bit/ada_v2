@@ -5,7 +5,7 @@ const ConfirmationPopup = ({ request, onConfirm, onDeny }) => {
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className="relative w-full max-w-lg p-8 bg-black/90 border border-cyan-500/30 rounded-3xl shadow-[0_0_50px_rgba(34,211,238,0.15)] backdrop-blur-2xl transform transition-all scale-100">
+            <div className="relative w-full max-w-lg mx-3 p-5 sm:p-8 bg-black/90 border border-cyan-500/30 rounded-3xl shadow-[0_0_50px_rgba(34,211,238,0.15)] backdrop-blur-2xl transform transition-all scale-100 max-h-[min(90dvh,48rem)] overflow-y-auto">
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none mix-blend-overlay rounded-3xl"></div>
 
                 {/* Header with Icon */}

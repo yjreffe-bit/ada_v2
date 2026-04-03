@@ -22,6 +22,7 @@ ADA V2 is a sophisticated AI assistant designed for multimodal interaction. It c
 | **🖐️ Minority Report UI** | Gesture-controlled window manipulation | MediaPipe Hand Tracking |
 | **👁️ Face Authentication** | Secure local biometric login | MediaPipe Face Landmarker |
 | **🌐 Web Agent** | Autonomous browser automation | Playwright + Chromium |
+| **🎬 Content Video Studio** | Generates short-form scripts, preview videos, publishing copy, and upload shortcuts | Gemini + Pillow + MoviePy + pyttsx3 |
 | **🏠 Smart Home** | Voice control for TP-Link Kasa devices | `python-kasa` |
 | **📁 Project Memory** | Persistent context across sessions | File-based JSON storage |
 
@@ -77,6 +78,65 @@ graph TB
 ---
 
 ## ⚡ TL;DR Quick Start (Experienced Developers)
+
+### Mobile And Foldable Access
+
+If you want to open ADA from a Galaxy Z Fold, S24 Ultra, or another phone on the same Wi-Fi network:
+
+```bash
+# Terminal 1: backend on LAN
+ADA_HOST=0.0.0.0 ADA_PORT=8000 python backend/server.py
+
+# Terminal 2: frontend on LAN
+npm run dev:mobile
+```
+
+Then open `http://YOUR_COMPUTER_IP:5173` on the phone. The frontend will automatically connect back to `YOUR_COMPUTER_IP:8000` unless `VITE_SOCKET_URL` is explicitly set.
+
+### Gemini Key Failover
+
+ADA can rotate across multiple Gemini API keys automatically when one key hits quota or rate limits.
+
+Set your primary paid key as normal:
+
+```bash
+GEMINI_API_KEY=your_paid_key
+```
+
+Then add fallback keys using either a comma-separated list:
+
+```bash
+GEMINI_API_KEY_FALLBACKS=free_key_1,free_key_2,free_key_3
+```
+
+or numbered variables:
+
+```bash
+GEMINI_API_KEY_1=free_key_1
+GEMINI_API_KEY_2=free_key_2
+GEMINI_API_KEY_3=free_key_3
+```
+
+When a key returns quota or rate-limit errors, ADA cools that key down and switches to the next available Gemini key automatically.
+
+### Content Video Studio
+
+ADA now includes a built-in content video feature for short-form content packs.
+
+What it does:
+
+- Generates a structured script and scene breakdown from your topic
+- Supports niche presets, narrator tone presets, and video style presets such as cinematic, anime, realistic, documentary, and neon
+- Enforces a 90-second minimum duration by default
+- Supports intro and outro cards
+- Builds a local preview video package with open-source tools
+- Produces title, description, CTA, hashtags, and upload shortcuts for YouTube, Facebook, TikTok, and Instagram
+
+Important notes:
+
+- The video renderer uses local Python media libraries, not paid video APIs
+- Narration uses `pyttsx3` when available; if local TTS is unavailable, ADA still renders a silent preview video with script and scene cards
+- For best results, install the Python dependencies in `requirements.txt`
 
 <details>
 <summary>Click to expand quick setup commands</summary>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Globe, X } from 'lucide-react';
 
-const BrowserWindow = ({ imageSrc, logs, onClose, socket }) => {
+const BrowserWindow = ({ imageSrc, logs, onClose, socket, mobileLayout = false }) => {
     const [input, setInput] = React.useState('');
     const logsEndRef = useRef(null);
 
@@ -64,7 +64,7 @@ const BrowserWindow = ({ imageSrc, logs, onClose, socket }) => {
             </div>
 
             {/* Logs Overlay (Bottom) */}
-            <div className="h-24 bg-black/90 backdrop-blur border-t border-gray-800 p-2 font-mono text-[10px] overflow-y-auto text-green-500/80">
+            <div className={`${mobileLayout ? 'h-20' : 'h-24'} bg-black/90 backdrop-blur border-t border-gray-800 p-2 font-mono text-[10px] overflow-y-auto text-green-500/80`}>
                 {logs.map((log, i) => (
                     <div key={i} className="mb-1 border-l-2 border-cyan-900 pl-1 break-words">
                         <span className="opacity-50 mr-2">[{new Date().toLocaleTimeString().split(' ')[0]}]</span>
