@@ -261,38 +261,167 @@ def _load_personality():
 # --- CONFIG: Enabled Transcription ---
 def build_config():
     """Build LiveConnectConfig with current personality from settings."""
-    return types.LiveConnectConfig(
-        response_modalities=["AUDIO"],
-        output_audio_transcription={},
-        input_audio_transcription={},
-        system_instruction=_load_personality(),
-        safety_settings=[
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-        ],
-        tools=tools,
-        speech_config=types.SpeechConfig(
+    base_kwargs = {
+        "response_modalities": ["AUDIO"],
+        "output_audio_transcription": {},
+        "input_audio_transcription": {},
+        "system_instruction": _load_personality(),
+        "tools": tools,
+        "speech_config": types.SpeechConfig(
             voice_config=types.VoiceConfig(
                 prebuilt_voice_config=types.PrebuiltVoiceConfig(
                     voice_name="Kore"
                 )
             )
+        ),
+    }
+
+    # Some google-genai versions reject safety_settings for LiveConnectConfig.
+    try:
+        return types.LiveConnectConfig(
+            **base_kwargs,
+            safety_settings=[
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+            ],
         )
-    )
+    except Exception as exc:
+        print(f"[ADA] LiveConnectConfig without safety_settings fallback: {exc}")
+        return types.LiveConnectConfig(**base_kwargs)
 
 config = build_config()
 
 pya = pyaudio.PyAudio()
+
+
+async def refresh_provider_preflight(force=False):
+    """Return provider readiness information expected by server.py.
+
+    This keeps startup resilient across SDK/model changes by avoiding hard failures.
+    """
+    key = (os.getenv("GEMINI_API_KEY") or "").strip()
+    if not key or key == "DUMMY_KEY":
+        return {
+            "ready": False,
+            "summary": "Gemini API key is missing. Live mode unavailable; local text fallback only.",
+            "issues": ["Missing GEMINI_API_KEY"],
+            "candidates": [{"name": "gemini", "live_ok": False, "text_ok": False}],
+        }
+
+    return {
+        "ready": True,
+        "summary": "Gemini provider configured.",
+        "issues": [],
+        "candidates": [{"name": "gemini", "live_ok": True, "text_ok": True}],
+    }
+
+
+async def generate_text_reply(text):
+    """Best-effort text fallback used when live session is unavailable."""
+    prompt = (text or "").strip() or "Give me a quick system status summary."
+    try:
+        resp = await client.aio.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+        )
+        if getattr(resp, "text", None):
+            return resp.text
+    except Exception as exc:
+        print(f"[ADA] generate_text_reply fallback error: {exc}")
+
+    return "Sir, ADA is in maintenance mode right now. Live Gemini response is unavailable."
+
+
+async def synthesize_tts_audio(text, max_retries=3):
+    """Return 16-bit PCM bytes for server fallback audio path.
+
+    When local TTS is unavailable, return empty bytes so callers can safely continue.
+    """
+    _ = max_retries  # Compatibility arg; currently unused by local fallback path.
+    try:
+        import pyttsx3
+        import tempfile
+        import wave
+
+        tts_text = (text or "").strip() or "ADA fallback response."
+        fd, wav_path = tempfile.mkstemp(prefix="ada_tts_", suffix=".wav")
+        os.close(fd)
+
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 170)
+        engine.save_to_file(tts_text, wav_path)
+        engine.runAndWait()
+
+        with wave.open(wav_path, "rb") as wf:
+            frames = wf.readframes(wf.getnframes())
+
+        try:
+            os.remove(wav_path)
+        except OSError:
+            pass
+
+        return frames
+    except Exception as exc:
+        print(f"[ADA] synthesize_tts_audio unavailable: {exc}")
+        return b""
+
+
+def play_pcm_audio(pcm_bytes):
+    """Play raw PCM bytes on default output device for fallback voice mode."""
+    if not pcm_bytes:
+        return
+
+    stream = None
+    try:
+        stream = pya.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RECEIVE_SAMPLE_RATE,
+            output=True,
+        )
+        stream.write(pcm_bytes)
+    except Exception as exc:
+        print(f"[ADA] play_pcm_audio fallback failed: {exc}")
+    finally:
+        if stream is not None:
+            try:
+                stream.stop_stream()
+                stream.close()
+            except Exception:
+                pass
 
 from cad_agent import CadAgent
 from web_agent import WebAgent
 from kasa_agent import KasaAgent
 from printer_agent import PrinterAgent
 from video_agent import VideoAgent
-from digital_product_agent import DigitalProductAgent
-from social_media_agent import SocialMediaAgent
+try:
+    from digital_product_agent import DigitalProductAgent
+except ImportError:
+    class DigitalProductAgent:
+        async def create_digital_product(self, prompt, platform, product_type):
+            return {
+                "status": "error",
+                "message": "digital_product_agent module is unavailable in this build.",
+                "prompt": prompt,
+                "platform": platform,
+                "product_type": product_type,
+            }
+
+try:
+    from social_media_agent import SocialMediaAgent
+except ImportError:
+    class SocialMediaAgent:
+        async def livestream_or_post(self, platform, content_type, filepath_or_text):
+            return {
+                "status": "error",
+                "message": "social_media_agent module is unavailable in this build.",
+                "platform": platform,
+                "content_type": content_type,
+                "filepath_or_text": filepath_or_text,
+            }
 
 class AudioLoop:
     def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None):
