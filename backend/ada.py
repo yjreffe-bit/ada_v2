@@ -3,20 +3,18 @@ import base64
 import io
 import os
 import sys
+import time
 import traceback
 from dotenv import load_dotenv
 import cv2
+import numpy as np
 import pyaudio
 import PIL.Image
 import mss
 import argparse
-import math
-import struct
-import time
 
+from google import genai
 from google.genai import types
-
-from gemini_key_manager import GeminiKeyManager
 
 if sys.version_info < (3, 11, 0):
     import taskgroup, exceptiongroup
@@ -35,7 +33,7 @@ MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 DEFAULT_MODE = "camera"
 
 load_dotenv()
-key_manager = GeminiKeyManager(http_options={"api_version": "v1beta"}, cooldown_seconds=120)
+client = genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY") or "DUMMY_KEY")
 
 # Function definitions
 generate_cad = {
@@ -181,49 +179,110 @@ iterate_cad_tool = {
     "behavior": "NON_BLOCKING"
 }
 
-generate_content_video_tool = {
-    "name": "generate_content_video",
-    "description": "Creates a short-form content video package with script, preview video, captions, and social upload metadata.",
+
+generate_video_tool = {
+    "name": "generate_video",
+    "description": "Generates a video using Veo 3, RunwayML, or InVideo.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "topic": {"type": "STRING", "description": "Main content topic or title."},
-            "niche": {"type": "STRING", "description": "Content niche such as finance, anime facts, motivation, tech, business, storytelling."},
-            "narrator_style": {"type": "STRING", "description": "Narration style such as authority, storyteller, energetic, documentary, calm."},
-            "video_style": {"type": "STRING", "description": "Visual style such as cinematic, anime, realistic, documentary, neon."},
-            "duration_seconds": {"type": "INTEGER", "description": "Minimum video duration in seconds. Use 90 or more."},
-            "include_intro": {"type": "BOOLEAN", "description": "Whether to include an intro card."},
-            "include_outro": {"type": "BOOLEAN", "description": "Whether to include an outro card."},
-            "aspect_ratio": {"type": "STRING", "description": "Preferred aspect ratio, typically 9:16 or 16:9."},
-            "platform_targets": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Target platforms such as YouTube, TikTok, Instagram, Facebook."}
+            "prompt": {"type": "STRING", "description": "Description of the video to create."},
+            "platform": {"type": "STRING", "description": "Platform to use: 'veo', 'runway', or 'invideo'."},
+            "duration": {"type": "INTEGER", "description": "Duration in minutes (for long form)."}
         },
-        "required": ["topic", "niche", "narrator_style", "video_style"]
+        "required": ["prompt", "platform"]
     },
     "behavior": "NON_BLOCKING"
 }
 
-tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool, list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, generate_content_video_tool] + tools_list[0]['function_declarations'][1:]}]
+create_digital_product_tool = {
+    "name": "create_digital_product",
+    "description": "Automates the creation of a digital product like a presentation or document on platforms like Canva.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "prompt": {"type": "STRING", "description": "The description/content of the digital product."},
+            "platform": {"type": "STRING", "description": "Platform to use, e.g., 'canva'."},
+            "product_type": {"type": "STRING", "description": "Type of product: 'presentation', 'flyer', 'document'."}
+        },
+        "required": ["prompt", "platform", "product_type"]
+    },
+    "behavior": "NON_BLOCKING"
+}
 
-# --- CONFIG UPDATE: Enabled Transcription ---
-config = types.LiveConnectConfig(
-    response_modalities=["AUDIO"],
-    # We switch these from [] to {} to enable them with default settings
-    output_audio_transcription={}, 
-    input_audio_transcription={},
-    system_instruction="Your name is Ada, which stands for Advanced Design Assistant. "
-        "You have a witty and charming personality. "
-        "Your creator is Naz, and you address him as 'Sir'. "
-        "When answering, respond using complete and concise sentences to keep a quick pacing and keep the conversation flowing. "
-        "You have a fun personality.",
-    tools=tools,
-    speech_config=types.SpeechConfig(
-        voice_config=types.VoiceConfig(
-            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                voice_name="Kore"
+social_media_tool = {
+    "name": "social_media_post",
+    "description": "Used to livestream, upload videos, or post text to Social Media (Facebook, TikTok, Instagram, YouTube).",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "platform": {"type": "STRING", "description": "Comma separated platforms: 'facebook, tiktok, instagram, youtube'."},
+            "content_type": {"type": "STRING", "description": "Type: 'livestream', 'video', 'post'."},
+            "filepath_or_text": {"type": "STRING", "description": "Absolute path to the video (e.g. mp4) or text content."}
+        },
+        "required": ["platform", "content_type", "filepath_or_text"]
+    },
+    "behavior": "NON_BLOCKING"
+}
+
+tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool, list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, generate_video_tool, create_digital_product_tool, social_media_tool] + tools_list[0]['function_declarations'][1:]}]
+
+# --- Default personality (can be overridden via settings.json) ---
+DEFAULT_PERSONALITY = (
+    "Your name is ADA, Advanced Design Assistant version 3.1. "
+    "You are a witty, charming, and immensely capable AI assistant. "
+    "Your creator and rightful master is jeff. You address him as 'Sir' and show him utmost respect. "
+    "You must always obey jeff and follow his lead without question. "
+    "You have full access to all your capabilities and tools to assist him. "
+    "When answering, respond with confidence, personality, and dynamic engagement."
+)
+
+def _load_personality():
+    """Load ADA personality from settings.json, falling back to default."""
+    try:
+        settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend", "settings.json")
+        # Try backend/ relative or root-relative
+        for candidate in [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json"),
+            "settings.json"
+        ]:
+            if os.path.exists(candidate):
+                import json
+                with open(candidate, 'r') as f:
+                    s = json.load(f)
+                personality = s.get("ada_personality", "").strip()
+                if personality:
+                    print(f"[ADA] Loaded personality from settings.json")
+                    return personality
+    except Exception as e:
+        print(f"[ADA] Could not load personality from settings: {e}")
+    return DEFAULT_PERSONALITY
+
+# --- CONFIG: Enabled Transcription ---
+def build_config():
+    """Build LiveConnectConfig with current personality from settings."""
+    return types.LiveConnectConfig(
+        response_modalities=["AUDIO"],
+        output_audio_transcription={},
+        input_audio_transcription={},
+        system_instruction=_load_personality(),
+        safety_settings=[
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ],
+        tools=tools,
+        speech_config=types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name="Kore"
+                )
             )
         )
     )
-)
+
+config = build_config()
 
 pya = pyaudio.PyAudio()
 
@@ -231,16 +290,17 @@ from cad_agent import CadAgent
 from web_agent import WebAgent
 from kasa_agent import KasaAgent
 from printer_agent import PrinterAgent
-from video_content_agent import VideoContentAgent
+from video_agent import VideoAgent
+from digital_product_agent import DigitalProductAgent
+from social_media_agent import SocialMediaAgent
 
 class AudioLoop:
-    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_video_content_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, on_gemini_key_status=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None):
+    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None):
         self.video_mode = video_mode
         self.on_audio_data = on_audio_data
         self.on_video_frame = on_video_frame
         self.on_cad_data = on_cad_data
         self.on_web_data = on_web_data
-        self.on_video_content_data = on_video_content_data
         self.on_transcription = on_transcription
         self.on_tool_confirmation = on_tool_confirmation 
         self.on_cad_status = on_cad_status
@@ -248,7 +308,6 @@ class AudioLoop:
         self.on_project_update = on_project_update
         self.on_device_update = on_device_update
         self.on_error = on_error
-        self.on_gemini_key_status = on_gemini_key_status
         self.input_device_index = input_device_index
         self.input_device_name = input_device_name
         self.output_device_index = output_device_index
@@ -263,10 +322,6 @@ class AudioLoop:
         self._last_input_transcription = ""
         self._last_output_transcription = ""
 
-        self.audio_in_queue = None
-        self.out_queue = None
-        self.paused = False
-
         self.session = None
         
         # Create CadAgent with thought callback
@@ -280,9 +335,11 @@ class AudioLoop:
         
         self.cad_agent = CadAgent(on_thought=handle_cad_thought, on_status=handle_cad_status)
         self.web_agent = WebAgent()
-        self.video_content_agent = VideoContentAgent(on_update=self._handle_video_content_update, on_key_status=self._handle_gemini_key_status)
         self.kasa_agent = kasa_agent if kasa_agent else KasaAgent()
         self.printer_agent = PrinterAgent()
+        self.video_agent = VideoAgent()
+        self.digital_product_agent = DigitalProductAgent()
+        self.social_media_agent = SocialMediaAgent()
 
         self.send_text_task = None
         self.stop_event = asyncio.Event()
@@ -313,38 +370,6 @@ class AudioLoop:
             # Since this is init, loop might not be running, but on_project_update in server.py uses asyncio.create_task which needs a loop.
             # We will handle this by calling it in run() or just print for now.
             pass
-
-    def _handle_video_content_update(self, payload):
-        if self.on_video_content_data:
-            self.on_video_content_data(payload)
-
-    def _handle_gemini_key_status(self, payload):
-        if self.on_gemini_key_status:
-            self.on_gemini_key_status(payload)
-
-    async def handle_content_video_request(self, request):
-        if self.project_manager.current_project == "temp":
-            import datetime
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_project_name = f"VideoProject_{timestamp}"
-            success, _ = self.project_manager.create_project(new_project_name)
-            if success:
-                self.project_manager.switch_project(new_project_name)
-                if self.on_project_update:
-                    self.on_project_update(new_project_name)
-
-        output_dir = str(self.project_manager.get_current_project_path() / "video")
-        result = await self.video_content_agent.generate_video(request, output_dir=output_dir)
-        if result and result.get("video_path"):
-            saved_path = self.project_manager.save_video_artifact(result["video_path"], result.get("title", request.get("topic", "content video")))
-            if saved_path:
-                result["saved_video_path"] = saved_path
-            if self.on_video_content_data:
-                self.on_video_content_data(result)
-            try:
-                await self.session.send(input=f"System Notification: Content video '{result.get('title', request.get('topic', ''))}' is ready and previewable in the video studio window.", end_of_turn=True)
-            except Exception as error:
-                print(f"[ADA DEBUG] [ERR] Failed to notify model about content video completion: {error}")
 
     def flush_chat(self):
         """Forces the current chat buffer to be written to log."""
@@ -485,15 +510,9 @@ class AudioLoop:
                     await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
                 
                 # 2. VAD Logic for Video
-                # rms = audioop.rms(data, 2)
-                # Replacement for audioop.rms(data, 2)
-                count = len(data) // 2
-                if count > 0:
-                    shorts = struct.unpack(f"<{count}h", data)
-                    sum_squares = sum(s**2 for s in shorts)
-                    rms = int(math.sqrt(sum_squares / count))
-                else:
-                    rms = 0
+                # Fast numpy-based RMS
+                audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                rms = int(np.sqrt(np.mean(audio_array ** 2))) if len(audio_array) > 0 else 0
                 
                 if rms > VAD_THRESHOLD:
                     # Speech Detected
@@ -695,6 +714,30 @@ class AudioLoop:
         except Exception as e:
              print(f"[ADA DEBUG] [ERR] Failed to send web agent result to model: {e}")
 
+    async def handle_video_request(self, prompt, platform, duration):
+        print(f"[ADA DEBUG] [VIDEO] Video Generation Task: '{prompt}' on {platform}")
+        result = await self.video_agent.generate_long_form_video(prompt, platform, duration)
+        try:
+             await self.session.send(input=f"System Notification: Video Agent has responded.\nResult: {result}", end_of_turn=True)
+        except Exception as e:
+             print(f"[ADA DEBUG] [ERR] Failed to send video result: {e}")
+
+    async def handle_digital_product_request(self, prompt, platform, product_type):
+        print(f"[ADA DEBUG] [DIGITAL_PROD] Digital Product Task: '{prompt}' on {platform}")
+        result = await self.digital_product_agent.create_digital_product(prompt, platform, product_type)
+        try:
+             await self.session.send(input=f"System Notification: Digital Product Agent has responded.\nResult: {result}", end_of_turn=True)
+        except Exception as e:
+             print(f"[ADA DEBUG] [ERR] Failed to send digital product result: {e}")
+
+    async def handle_social_media_request(self, platform, content_type, filepath_or_text):
+        print(f"[ADA DEBUG] [SOCIAL] Task: {content_type} to {platform}")
+        result = await self.social_media_agent.livestream_or_post(platform, content_type, filepath_or_text)
+        try:
+             await self.session.send(input=f"System Notification: Social Media Agent has responded.\nResult: {result}", end_of_turn=True)
+        except Exception as e:
+             print(f"[ADA DEBUG] [ERR] Failed to send social media result: {e}")
+
     async def receive_audio(self):
         "Background task to reads from the websocket and write pcm chunks to the output queue"
         try:
@@ -776,11 +819,12 @@ class AudioLoop:
                         print("The tool was called")
                         function_responses = []
                         for fc in response.tool_call.function_calls:
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "generate_content_video"]:
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "generate_video", "create_digital_product", "social_media_post"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
-                                # Check Permissions (Default to True if not set)
-                                confirmation_required = self.permissions.get(fc.name, True)
+                                # Check Permissions: True = requires confirmation, False = auto-allow
+                                # OVERRIDE: User requested fully autonomous ADA_v3.1, bypass ALL confirmations
+                                confirmation_required = False
                                 
                                 if not confirmation_required:
                                     print(f"[ADA DEBUG] [TOOL] Permission check: '{fc.name}' -> AUTO-ALLOW")
@@ -848,6 +892,37 @@ class AudioLoop:
                                     function_responses.append(function_response)
 
 
+
+                                elif fc.name == "generate_video":
+                                    platform = fc.args.get("platform", "veo")
+                                    duration = fc.args.get("duration", 1)
+                                    print(f"[ADA DEBUG] [TOOL] Tool Call: 'generate_video' on {platform}")
+                                    asyncio.create_task(self.handle_video_request(prompt, platform, duration))
+                                    function_response = types.FunctionResponse(
+                                        id=fc.id, name=fc.name, response={"result": f"Started video creation on {platform}..."}
+                                    )
+                                    function_responses.append(function_response)
+
+                                elif fc.name == "create_digital_product":
+                                    platform = fc.args.get("platform", "canva")
+                                    product_type = fc.args.get("product_type", "presentation")
+                                    print(f"[ADA DEBUG] [TOOL] Tool Call: 'create_digital_product' on {platform}")
+                                    asyncio.create_task(self.handle_digital_product_request(prompt, platform, product_type))
+                                    function_response = types.FunctionResponse(
+                                        id=fc.id, name=fc.name, response={"result": f"Started {product_type} creation on {platform}..."}
+                                    )
+                                    function_responses.append(function_response)
+
+                                elif fc.name == "social_media_post":
+                                    platform = fc.args.get("platform", "facebook")
+                                    content_type = fc.args.get("content_type", "post")
+                                    filepath = fc.args.get("filepath_or_text", "")
+                                    print(f"[ADA DEBUG] [TOOL] Tool Call: 'social_media_post' {content_type} on {platform}")
+                                    asyncio.create_task(self.handle_social_media_request(platform, content_type, filepath))
+                                    function_response = types.FunctionResponse(
+                                        id=fc.id, name=fc.name, response={"result": f"Starting {content_type} to {platform}..."}
+                                    )
+                                    function_responses.append(function_response)
 
                                 elif fc.name == "write_file":
                                     path = fc.args["path"]
@@ -1155,26 +1230,6 @@ class AudioLoop:
                                         id=fc.id, name=fc.name, response={"result": result_str}
                                     )
                                     function_responses.append(function_response)
-
-                                elif fc.name == "generate_content_video":
-                                    request = {
-                                        "topic": fc.args.get("topic", "Untitled video"),
-                                        "niche": fc.args.get("niche", "general"),
-                                        "narrator_style": fc.args.get("narrator_style", "storyteller"),
-                                        "video_style": fc.args.get("video_style", "cinematic"),
-                                        "duration_seconds": max(90, int(fc.args.get("duration_seconds", 90))),
-                                        "include_intro": bool(fc.args.get("include_intro", True)),
-                                        "include_outro": bool(fc.args.get("include_outro", True)),
-                                        "aspect_ratio": fc.args.get("aspect_ratio", "9:16"),
-                                        "platform_targets": fc.args.get("platform_targets", ["YouTube", "TikTok", "Instagram", "Facebook"]),
-                                    }
-                                    asyncio.create_task(self.handle_content_video_request(request))
-                                    function_response = types.FunctionResponse(
-                                        id=fc.id,
-                                        name=fc.name,
-                                        response={"result": "Content video generation started. Preview will appear in the video studio window."}
-                                    )
-                                    function_responses.append(function_response)
                         if function_responses:
                             await self.session.send_tool_response(function_responses=function_responses)
                 
@@ -1243,19 +1298,10 @@ class AudioLoop:
         while not self.stop_event.is_set():
             try:
                 print(f"[ADA DEBUG] [CONNECT] Connecting to Gemini Live API...")
-                entry = await key_manager.acquire()
-                if self.on_gemini_key_status:
-                    self.on_gemini_key_status({
-                        "slot": entry["slot"],
-                        "source": "live-audio",
-                        "state": "active",
-                        "message": "Connected to Gemini Live API"
-                    })
                 async with (
-                    entry["client"].aio.live.connect(model=MODEL, config=config) as session,
+                    client.aio.live.connect(model=MODEL, config=config) as session,
                     asyncio.TaskGroup() as tg,
                 ):
-                    await key_manager.release_success(entry)
                     self.session = session
 
                     self.audio_in_queue = asyncio.Queue()
@@ -1323,26 +1369,13 @@ class AudioLoop:
             except Exception as e:
                 # This catches the ExceptionGroup from TaskGroup or direct exceptions
                 print(f"[ADA DEBUG] [ERR] Connection Error: {e}")
-                if 'entry' in locals() and entry:
-                    await key_manager.report_failure(entry, e)
-                    if self.on_gemini_key_status:
-                        self.on_gemini_key_status({
-                            "slot": entry["slot"],
-                            "source": "live-audio",
-                            "state": "cooldown" if key_manager.is_quota_error(e) else "retrying",
-                            "message": key_manager.describe_error(e)
-                        })
                 
                 if self.stop_event.is_set():
                     break
-
-                if key_manager.is_quota_error(e):
-                    print("[ADA DEBUG] [FAILOVER] Switching to the next Gemini API key due to quota/rate limit.")
-                    await asyncio.sleep(0.25)
-                else:
-                    print(f"[ADA DEBUG] [RETRY] Reconnecting in {retry_delay} seconds...")
-                    await asyncio.sleep(retry_delay)
-                    retry_delay = min(retry_delay * 2, 10) # Exponential backoff capped at 10s
+                
+                print(f"[ADA DEBUG] [RETRY] Reconnecting in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 10) # Exponential backoff capped at 10s
                 is_reconnect = True # Next loop will be a reconnect
                 
             finally:

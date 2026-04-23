@@ -3,18 +3,18 @@
     "tool_permissions": {
         "generate_cad": true,
         "run_web_agent": true,
-        "write_file": false,
-        "read_directory": false,
-        "read_file": false,
-        "create_project": false,
-        "switch_project": false,
-        "list_projects": false,
-        "create_directory": false,
-        "iterate_cad": false,
-        "print_stl": false,
-        "discover_printers": false,
-        "control_light": false,
-        "list_smart_devices": false
+        "write_file": true,
+        "read_directory": true,
+        "read_file": true,
+        "create_project": true,
+        "switch_project": true,
+        "list_projects": true,
+        "create_directory": true,
+        "iterate_cad": true,
+        "print_stl": true,
+        "discover_printers": true,
+        "control_light": true,
+        "list_smart_devices": true
     },
     "printers": [
         {
@@ -32,22 +32,7 @@
             "camera_url": null
         }
     ],
-    "kasa_devices": [
-        {
-            "ip": "10.0.0.49",
-            "alias": "Right Room Light",
-            "model": "KL135"
-        },
-        {
-            "ip": "10.0.0.52",
-            "alias": "Left Office Light ",
-            "model": "KL135"
-        },
-        {
-            "ip": "10.0.0.83",
-            "alias": "Right Office Light",
-            "model": "KL135"
-        }
-    ],
-    "camera_flipped": false
+    "kasa_devices": [],
+    "camera_flipped": false,
+    "ada_personality": "Your name is ADA, Advanced Design Assistant version 3.1. You are a witty, charming, and immensely capable AI assistant. Your creator and rightful master is jeff. You address him as 'Sir' and show him utmost respect. You must always obey jeff and follow his lead without question. You have full access to all your capabilities and tools. When answering, respond with confidence, personality, and dynamic engagement."
 }

@@ -2,13 +2,18 @@ import os
 import time
 import asyncio
 import base64
+from pathlib import Path
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
+from google import genai
 from google.genai import types
 
-from gemini_key_manager import GeminiKeyManager
+# 1. Load API Key
+load_dotenv(Path(__file__).with_name('.env'))
+API_KEY = os.getenv("GEMINI_API_KEY")
 
-load_dotenv()
+if not API_KEY:
+    raise ValueError("Please set GEMINI_API_KEY in your .env file")
 
 # 2. Configuration
 SCREEN_WIDTH = 1440
@@ -18,34 +23,10 @@ MODEL_ID = "gemini-2.5-computer-use-preview-10-2025"
 
 class WebAgent:
     def __init__(self):
-        self.key_manager = GeminiKeyManager()
-        self.client = self.key_manager.primary_client
+        self.client = genai.Client(api_key=API_KEY)
         self.browser = None
         self.context = None
         self.page = None
-
-    async def _generate_with_failover(self, chat_history, config):
-        last_error = None
-
-        for _ in range(len(self.key_manager._entries)):
-            entry = await self.key_manager.acquire()
-            try:
-                response = await entry["client"].aio.models.generate_content(
-                    model=MODEL_ID,
-                    contents=chat_history,
-                    config=config
-                )
-                await self.key_manager.release_success(entry)
-                return response
-            except Exception as error:
-                last_error = error
-                await self.key_manager.report_failure(entry, error)
-                if not self.key_manager.is_retryable_error(error):
-                    raise
-
-        if last_error:
-            raise last_error
-        raise RuntimeError("Gemini web-agent request failed before any key could be used.")
 
     def denormalize_x(self, x: int, width: int) -> int:
         return int((x / 1000) * width)
@@ -259,7 +240,11 @@ class WebAgent:
                 print(f"\n--- Turn {turn + 1} ---")
                 
                 try:
-                    response = await self._generate_with_failover(chat_history, config)
+                    response = await self.client.aio.models.generate_content(
+                        model=MODEL_ID,
+                        contents=chat_history,
+                        config=config
+                    )
                 except Exception as e:
                     print(f"[CRITICAL] Critical API Error: {e}")
                     if update_callback: await update_callback(None, f"Error: {e}")

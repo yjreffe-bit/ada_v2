@@ -1,6 +1,5 @@
 import sys
 import asyncio
-import os
 
 # Fix for asyncio subprocess support on Windows
 # MUST BE SET BEFORE OTHER IMPORTS
@@ -10,12 +9,13 @@ if sys.platform == 'win32':
 import socketio
 import uvicorn
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 import asyncio
 import threading
 import sys
 import os
 import json
+import time
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -29,11 +29,31 @@ from authenticator import FaceAuthenticator
 from kasa_agent import KasaAgent
 
 # Create a Socket.IO server
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
-app = FastAPI()
-app_socketio = socketio.ASGIApp(sio, app)
-PROJECTS_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "projects"
-app.mount("/artifacts", StaticFiles(directory=str(PROJECTS_ROOT), check_dir=False), name="artifacts")
+import re
+
+
+class LocalhostCORS:
+    def __call__(self, origin):
+        if origin is None:
+            return False
+        return bool(re.match(r"https?://(localhost|127\.0\.0\.1)(:\d+)?$", origin))
+
+
+def log_origin_middleware(app):
+    async def middleware(scope, receive, send):
+        if 'headers' in scope:
+            for key, value in scope['headers']:
+                if key == b'origin':
+                    print(f"[SOCKETIO] Incoming Origin: {value.decode()}")
+                    break
+        await app(scope, receive, send)
+
+    return middleware
+
+
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=LocalhostCORS())
+app = None
+app_socketio = None
 
 import signal
 
@@ -60,12 +80,18 @@ loop_task = None
 authenticator = None
 kasa_agent = KasaAgent()
 SETTINGS_FILE = "settings.json"
+STARTUP_CHECKS = {
+    "ready": None,
+    "summary": "Startup checks pending.",
+    "issues": [],
+}
+STARTUP_REFRESH_INTERVAL_SECONDS = 45
+_LAST_STARTUP_REFRESH_TS = 0.0
 
 DEFAULT_SETTINGS = {
     "face_auth_enabled": False, # Default OFF as requested
     "tool_permissions": {
         "generate_cad": True,
-        "generate_content_video": True,
         "run_web_agent": True,
         "write_file": True,
         "read_directory": True,
@@ -76,7 +102,14 @@ DEFAULT_SETTINGS = {
     },
     "printers": [], # List of {host, port, name, type}
     "kasa_devices": [], # List of {ip, alias, model}
-    "camera_flipped": False # Invert cursor horizontal direction
+    "camera_flipped": False, # Invert cursor horizontal direction
+    "ada_personality": (
+        "Your name is Ada, which stands for Advanced Design Assistant. "
+        "You have a witty and charming personality. "
+        "Your creator is Naz, and you address him as 'Sir'. "
+        "When answering, respond using complete and concise sentences to keep a quick pacing and keep the conversation flowing. "
+        "You have a fun personality."
+    )
 }
 
 SETTINGS = DEFAULT_SETTINGS.copy()
@@ -113,8 +146,94 @@ authenticator = None
 kasa_agent = KasaAgent(known_devices=SETTINGS.get("kasa_devices"))
 # tool_permissions is now SETTINGS["tool_permissions"]
 
-@app.on_event("startup")
-async def startup_event():
+
+def _is_quota_error(message):
+    if not message:
+        return False
+    lowered = message.lower()
+    return (
+        "exceeded your current quota" in lowered
+        or "resource_exhausted" in lowered
+        or "check your plan and billing" in lowered
+        or "quota exceeded" in lowered
+    )
+
+
+def _build_local_fallback_reply(user_text, failure_reason):
+    printer_count = len(SETTINGS.get("printers", []))
+    kasa_count = len(SETTINGS.get("kasa_devices", []))
+    face_auth_enabled = SETTINGS.get("face_auth_enabled", False)
+    reason_text = (failure_reason or "").lower()
+
+    if _is_quota_error(failure_reason):
+        cloud_issue = "Gemini cloud quota for this API key is currently exhausted, so live voice and full AI chat are unavailable."
+    elif "expired" in reason_text:
+        cloud_issue = "Gemini API key appears expired, so live voice and full AI chat are unavailable."
+    else:
+        cloud_issue = "Gemini cloud connection is currently unavailable, so live voice and full AI chat are unavailable."
+
+    summary = [
+        "Sir, ADA is running in local maintenance mode.",
+        cloud_issue,
+        f"Core status: face auth {'enabled' if face_auth_enabled else 'disabled'}, {printer_count} saved printer(s), {kasa_count} saved smart device(s).",
+    ]
+
+    lowered = (user_text or "").lower()
+    if any(word in lowered for word in ["status", "health", "check", "diagnose", "why"]):
+        summary.append(f"Detected backend issue: {failure_reason}")
+    elif any(word in lowered for word in ["help", "what can you do", "capabilities"]):
+        summary.append("I can still report system state, surface backend errors, and keep local ADA controls available while the API quota is restored.")
+    else:
+        summary.append(f"I received your message: '{user_text}'. Restore Gemini billing or quota to re-enable full ADA replies.")
+
+    summary.append("Action required: add Gemini billing or wait for quota reset, then restart ADA.")
+    return " ".join(summary)
+
+
+def _text_fallback_available():
+    candidates = STARTUP_CHECKS.get("candidates") or []
+    return any(candidate.get("text_ok") for candidate in candidates if isinstance(candidate, dict))
+
+
+async def _emit_pcm_audio_chunks(pcm_bytes, chunk_size=2048):
+    if not pcm_bytes:
+        return
+    for offset in range(0, len(pcm_bytes), chunk_size):
+        chunk = pcm_bytes[offset:offset + chunk_size]
+        await sio.emit('audio_data', {'data': list(chunk)})
+        await asyncio.sleep(0)
+
+
+async def _deliver_tts_fallback_audio(text):
+    try:
+        tts_pcm = await ada.synthesize_tts_audio(text, max_retries=3)
+        await _emit_pcm_audio_chunks(tts_pcm)
+        await asyncio.to_thread(ada.play_pcm_audio, tts_pcm)
+        return True
+    except Exception as exc:
+        print(f"[SERVER] TTS fallback failed: {exc}")
+        return False
+
+
+async def _maybe_refresh_startup_checks(force=False):
+    global STARTUP_CHECKS, _LAST_STARTUP_REFRESH_TS
+
+    now = time.time()
+    if not force and (now - _LAST_STARTUP_REFRESH_TS) < STARTUP_REFRESH_INTERVAL_SECONDS:
+        return STARTUP_CHECKS
+
+    try:
+        updated = await ada.refresh_provider_preflight(force=True)
+        STARTUP_CHECKS = updated
+        _LAST_STARTUP_REFRESH_TS = now
+        await sio.emit('startup_checks', STARTUP_CHECKS)
+    except Exception as exc:
+        print(f"[SERVER] Startup-check refresh failed: {exc}")
+
+    return STARTUP_CHECKS
+
+async def _run_startup_initialization():
+    global STARTUP_CHECKS, _LAST_STARTUP_REFRESH_TS
     import sys
     print(f"[SERVER DEBUG] Startup Event Triggered")
     print(f"[SERVER DEBUG] Python Version: {sys.version}")
@@ -128,15 +247,35 @@ async def startup_event():
 
     print("[SERVER] Startup: Initializing Kasa Agent...")
     await kasa_agent.initialize()
+    STARTUP_CHECKS = await ada.refresh_provider_preflight(force=True)
+    _LAST_STARTUP_REFRESH_TS = time.time()
+    print(f"[SERVER] Provider preflight: {STARTUP_CHECKS.get('summary')}")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    await _run_startup_initialization()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app_socketio = log_origin_middleware(socketio.ASGIApp(sio, app))
 
 @app.get("/status")
 async def status():
     return {"status": "running", "service": "A.D.A Backend"}
 
+
+@app.get("/startup-checks")
+async def startup_checks():
+    return STARTUP_CHECKS
+
 @sio.event
 async def connect(sid, environ):
     print(f"Client connected: {sid}")
+    await _maybe_refresh_startup_checks(force=False)
     await sio.emit('status', {'msg': 'Connected to A.D.A Backend'}, room=sid)
+    await sio.emit('startup_checks', STARTUP_CHECKS, room=sid)
 
     global authenticator
     
@@ -177,9 +316,175 @@ async def connect(sid, environ):
 async def disconnect(sid):
     print(f"Client disconnected: {sid}")
 
+
+@sio.event
+async def get_startup_checks(sid):
+    await _maybe_refresh_startup_checks(force=False)
+    await sio.emit('startup_checks', STARTUP_CHECKS, room=sid)
+
+
+async def _start_audio_loop(data=None):
+    global audio_loop, loop_task
+
+    print("Starting Audio Loop...")
+
+    device_index = None
+    device_name = None
+    start_muted = False
+    if data:
+        if 'device_index' in data:
+            device_index = data['device_index']
+        if 'device_name' in data:
+            device_name = data['device_name']
+        start_muted = data.get('muted', False)
+
+    print(f"Using input device: Name='{device_name}', Index={device_index}")
+
+    def on_audio_data(data_bytes):
+        asyncio.create_task(sio.emit('audio_data', {'data': list(data_bytes)}))
+
+    def on_cad_data(data):
+        info = f"{len(data.get('vertices', []))} vertices" if 'vertices' in data else f"{len(data.get('data', ''))} bytes (STL)"
+        print(f"Sending CAD data to frontend: {info}")
+        asyncio.create_task(sio.emit('cad_data', data))
+
+    def on_web_data(data):
+        print(f"Sending Browser data to frontend: {len(data.get('log', ''))} chars logs")
+        asyncio.create_task(sio.emit('browser_frame', data))
+
+    def on_transcription(data):
+        asyncio.create_task(sio.emit('transcription', data))
+
+    def on_tool_confirmation(data):
+        print(f"Requesting confirmation for tool: {data.get('tool')}")
+        asyncio.create_task(sio.emit('tool_confirmation_request', data))
+
+    def on_cad_status(status):
+        if isinstance(status, dict):
+            print(f"Sending CAD Status: {status.get('status')} (attempt {status.get('attempt')}/{status.get('max_attempts')})")
+            asyncio.create_task(sio.emit('cad_status', status))
+        else:
+            print(f"Sending CAD Status: {status}")
+            asyncio.create_task(sio.emit('cad_status', {'status': status}))
+
+    def on_cad_thought(thought_text):
+        asyncio.create_task(sio.emit('cad_thought', {'text': thought_text}))
+
+    def on_project_update(project_name):
+        print(f"Sending Project Update: {project_name}")
+        asyncio.create_task(sio.emit('project_update', {'project': project_name}))
+
+    def on_device_update(devices):
+        print(f"Sending Kasa Device Update: {len(devices)} devices")
+        asyncio.create_task(sio.emit('kasa_devices', devices))
+
+    def on_error(msg):
+        print(f"Sending Error to frontend: {msg}")
+        asyncio.create_task(sio.emit('error', {'msg': msg}))
+
+    print(f"Initializing AudioLoop with device_index={device_index}")
+    audio_loop = ada.AudioLoop(
+        video_mode="none",
+        on_audio_data=on_audio_data,
+        on_cad_data=on_cad_data,
+        on_web_data=on_web_data,
+        on_transcription=on_transcription,
+        on_tool_confirmation=on_tool_confirmation,
+        on_cad_status=on_cad_status,
+        on_cad_thought=on_cad_thought,
+        on_project_update=on_project_update,
+        on_device_update=on_device_update,
+        on_error=on_error,
+        input_device_index=device_index,
+        input_device_name=device_name,
+        kasa_agent=kasa_agent
+    )
+    print("AudioLoop initialized successfully.")
+
+    audio_loop.update_permissions(SETTINGS["tool_permissions"])
+
+    if start_muted:
+        print("Starting with Audio Paused")
+        audio_loop.set_paused(True)
+
+    print("Creating asyncio task for AudioLoop.run()")
+    loop_task = asyncio.create_task(audio_loop.run())
+
+    def handle_loop_exit(task):
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            print("Audio Loop Cancelled")
+        except Exception as e:
+            print(f"Audio Loop Crashed: {e}")
+
+    loop_task.add_done_callback(handle_loop_exit)
+
+    print("Emitting 'A.D.A Started'")
+    await sio.emit('status', {'msg': 'A.D.A Started'})
+
+    saved_printers = SETTINGS.get("printers", [])
+    if saved_printers and audio_loop.printer_agent:
+        print(f"[SERVER] Loading {len(saved_printers)} saved printers...")
+        for p in saved_printers:
+            audio_loop.printer_agent.add_printer_manually(
+                name=p.get("name", p["host"]),
+                host=p["host"],
+                port=p.get("port", 80),
+                printer_type=p.get("type", "moonraker"),
+                camera_url=p.get("camera_url")
+            )
+
+    asyncio.create_task(monitor_printers_loop())
+
+
+async def ensure_audio_session(data=None, timeout=8.0):
+    global audio_loop, loop_task
+
+    if audio_loop and audio_loop.session:
+        return True
+
+    if audio_loop and getattr(audio_loop, 'live_session_supported', True) is False:
+        print("[SERVER] Live session already marked unsupported. Using text fallback.")
+        return False
+
+    await _maybe_refresh_startup_checks(force=False)
+    if STARTUP_CHECKS.get("ready") is False and _text_fallback_available():
+        print("[SERVER] Live preflight is not ready, but text fallback is available. Skipping audio session startup.")
+        return False
+
+    if audio_loop and loop_task and (loop_task.done() or loop_task.cancelled()):
+        print("Audio loop task finished before session became ready. Resetting...")
+        audio_loop = None
+        loop_task = None
+
+    if not audio_loop:
+        await _start_audio_loop(data)
+
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        if audio_loop and audio_loop.session:
+            return True
+        if audio_loop and getattr(audio_loop, 'last_connection_error', None):
+            print(f"[SERVER] Audio session startup failed: {audio_loop.last_connection_error}")
+            return False
+        if loop_task and loop_task.done():
+            break
+        await asyncio.sleep(0.1)
+
+    print("[SERVER] Audio session did not become ready before timeout.")
+    return False
+
 @sio.event
 async def start_audio(sid, data=None):
     global audio_loop, loop_task
+
+    await _maybe_refresh_startup_checks(force=False)
+
+    if STARTUP_CHECKS.get("ready") is False and _text_fallback_available():
+        print("[SERVER] Skipping start_audio because live mode is unavailable and text fallback is active.")
+        await sio.emit('status', {'msg': 'Text Fallback Mode'})
+        return
     
     # Optional: Block if not authenticated
     # Only block if auth is ENABLED and not authenticated
@@ -189,18 +494,6 @@ async def start_audio(sid, data=None):
             await sio.emit('error', {'msg': 'Authentication Required'})
             return
 
-    print("Starting Audio Loop...")
-    
-    device_index = None
-    device_name = None
-    if data:
-        if 'device_index' in data:
-            device_index = data['device_index']
-        if 'device_name' in data:
-            device_name = data['device_name']
-            
-    print(f"Using input device: Name='{device_name}', Index={device_index}")
-    
     if audio_loop:
         if loop_task and (loop_task.done() or loop_task.cancelled()):
              print("Audio loop task appeared finished/cancelled. Clearing and restarting...")
@@ -210,150 +503,8 @@ async def start_audio(sid, data=None):
              print("Audio loop already running. Re-connecting client to session.")
              await sio.emit('status', {'msg': 'A.D.A Already Running'})
              return
-
-
-    # Callback to send audio data to frontend
-    def on_audio_data(data_bytes):
-        # We need to schedule this on the event loop
-        # This is high frequency, so we might want to downsample or batch if it's too much
-        asyncio.create_task(sio.emit('audio_data', {'data': list(data_bytes)}))
-
-    # Callback to send CAL data to frontend
-    def on_cad_data(data):
-        info = f"{len(data.get('vertices', []))} vertices" if 'vertices' in data else f"{len(data.get('data', ''))} bytes (STL)"
-        print(f"Sending CAD data to frontend: {info}")
-        asyncio.create_task(sio.emit('cad_data', data))
-
-    # Callback to send Browser data to frontend
-    def on_web_data(data):
-        print(f"Sending Browser data to frontend: {len(data.get('log', ''))} chars logs")
-        asyncio.create_task(sio.emit('browser_frame', data))
-
-    def on_video_content_data(data):
-        print(f"Sending video content update to frontend: {data.get('status', 'unknown')}")
-        saved_path = data.get('saved_video_path') or data.get('video_path')
-        if saved_path:
-            try:
-                rel_path = Path(saved_path).resolve().relative_to(PROJECTS_ROOT.resolve())
-                data["preview_url"] = f"/artifacts/{rel_path.as_posix()}"
-            except Exception:
-                pass
-        asyncio.create_task(sio.emit('video_content_update', data))
-        
-    # Callback to send Transcription data to frontend
-    def on_transcription(data):
-        # data = {"sender": "User"|"ADA", "text": "..."}
-        asyncio.create_task(sio.emit('transcription', data))
-
-    # Callback to send Confirmation Request to frontend
-    def on_tool_confirmation(data):
-        # data = {"id": "uuid", "tool": "tool_name", "args": {...}}
-        print(f"Requesting confirmation for tool: {data.get('tool')}")
-        asyncio.create_task(sio.emit('tool_confirmation_request', data))
-
-    # Callback to send CAD status to frontend
-    def on_cad_status(status):
-        # status can be: 
-        # - a string like "generating" (from ada.py handle_cad_request)
-        # - a dict with {status, attempt, max_attempts, error} (from CadAgent)
-        if isinstance(status, dict):
-            print(f"Sending CAD Status: {status.get('status')} (attempt {status.get('attempt')}/{status.get('max_attempts')})")
-            asyncio.create_task(sio.emit('cad_status', status))
-        else:
-            # Legacy: simple string
-            print(f"Sending CAD Status: {status}")
-            asyncio.create_task(sio.emit('cad_status', {'status': status}))
-
-    # Callback to send CAD thoughts to frontend (streaming)
-    def on_cad_thought(thought_text):
-        asyncio.create_task(sio.emit('cad_thought', {'text': thought_text}))
-
-    # Callback to send Project Update to frontend
-    def on_project_update(project_name):
-        print(f"Sending Project Update: {project_name}")
-        asyncio.create_task(sio.emit('project_update', {'project': project_name}))
-
-    # Callback to send Device Update to frontend
-    def on_device_update(devices):
-        # devices is a list of dicts
-        print(f"Sending Kasa Device Update: {len(devices)} devices")
-        asyncio.create_task(sio.emit('kasa_devices', devices))
-
-    # Callback to send Error to frontend
-    def on_error(msg):
-        print(f"Sending Error to frontend: {msg}")
-        asyncio.create_task(sio.emit('error', {'msg': msg}))
-
-    def on_gemini_key_status(data):
-        print(f"Sending Gemini key status: slot={data.get('slot')} source={data.get('source')} state={data.get('state')}")
-        asyncio.create_task(sio.emit('gemini_key_status', data))
-
-    # Initialize ADA
     try:
-        print(f"Initializing AudioLoop with device_index={device_index}")
-        audio_loop = ada.AudioLoop(
-            video_mode="none", 
-            on_audio_data=on_audio_data,
-            on_cad_data=on_cad_data,
-            on_web_data=on_web_data,
-            on_video_content_data=on_video_content_data,
-            on_transcription=on_transcription,
-            on_tool_confirmation=on_tool_confirmation,
-            on_cad_status=on_cad_status,
-            on_cad_thought=on_cad_thought,
-            on_project_update=on_project_update,
-            on_device_update=on_device_update,
-            on_error=on_error,
-            on_gemini_key_status=on_gemini_key_status,
-
-            input_device_index=device_index,
-            input_device_name=device_name,
-            kasa_agent=kasa_agent
-        )
-        print("AudioLoop initialized successfully.")
-
-        # Apply current permissions
-        audio_loop.update_permissions(SETTINGS["tool_permissions"])
-        
-        # Check initial mute state
-        if data and data.get('muted', False):
-            print("Starting with Audio Paused")
-            audio_loop.set_paused(True)
-
-        print("Creating asyncio task for AudioLoop.run()")
-        loop_task = asyncio.create_task(audio_loop.run())
-        
-        # Add a done callback to catch silent failures in the loop
-        def handle_loop_exit(task):
-            try:
-                task.result()
-            except asyncio.CancelledError:
-                print("Audio Loop Cancelled")
-            except Exception as e:
-                print(f"Audio Loop Crashed: {e}")
-                # You could emit 'error' here if you have context
-        
-        loop_task.add_done_callback(handle_loop_exit)
-        
-        print("Emitting 'A.D.A Started'")
-        await sio.emit('status', {'msg': 'A.D.A Started'})
-
-        # Load saved printers
-        saved_printers = SETTINGS.get("printers", [])
-        if saved_printers and audio_loop.printer_agent:
-            print(f"[SERVER] Loading {len(saved_printers)} saved printers...")
-            for p in saved_printers:
-                audio_loop.printer_agent.add_printer_manually(
-                    name=p.get("name", p["host"]),
-                    host=p["host"],
-                    port=p.get("port", 80),
-                    printer_type=p.get("type", "moonraker"),
-                    camera_url=p.get("camera_url")
-                )
-        
-        # Start Printer Monitor
-        asyncio.create_task(monitor_printers_loop())
-        
+        await _start_audio_loop(data)
     except Exception as e:
         print(f"CRITICAL ERROR STARTING ADA: {e}")
         import traceback
@@ -420,6 +571,36 @@ async def resume_audio(sid):
         await sio.emit('status', {'msg': 'Audio Resumed'})
 
 @sio.event
+async def video_frame(sid, data):
+    global audio_loop
+    if audio_loop:
+        try:
+            image_data = data.get('image')
+            if not image_data:
+                return
+                
+            if isinstance(image_data, bytes):
+                # Socket.io automatically decodes native Javascript Blobs to Python bytes!
+                payload = {
+                    "mime_type": "image/jpeg",
+                    "data": image_data
+                }
+            elif isinstance(image_data, str):
+                import base64
+                if ',' in image_data:
+                    image_data = image_data.split(',')[1]
+                payload = {
+                    "mime_type": "image/jpeg",
+                    "data": base64.b64decode(image_data)
+                }
+            else:
+                return
+
+            audio_loop._latest_image_payload = payload
+        except Exception as e:
+            print(f"[VISION ERR] Failed to parse vision frame: {e}")
+
+@sio.event
 async def confirm_tool(sid, data):
     # data: { "id": "...", "confirmed": True/False }
     request_id = data.get('id')
@@ -467,13 +648,49 @@ async def shutdown(sid, data=None):
 async def user_input(sid, data):
     text = data.get('text')
     print(f"[SERVER DEBUG] User input received: '{text}'")
-    
-    if not audio_loop:
-        print("[SERVER DEBUG] [Error] Audio loop is None. Cannot send text.")
-        return
 
-    if not audio_loop.session:
-        print("[SERVER DEBUG] [Error] Session is None. Cannot send text.")
+    await _maybe_refresh_startup_checks(force=False)
+
+    if STARTUP_CHECKS.get("ready") is False and _text_fallback_available():
+        try:
+            fallback_text = await ada.generate_text_reply(text)
+            if audio_loop and audio_loop.project_manager:
+                audio_loop.project_manager.log_chat("User", text)
+                audio_loop.project_manager.log_chat("ADA", fallback_text)
+            await sio.emit('status', {'msg': 'Text Fallback Mode'})
+            await sio.emit('transcription', {'sender': 'ADA', 'text': fallback_text})
+            tts_ok = await _deliver_tts_fallback_audio(fallback_text)
+            if not tts_ok:
+                await sio.emit('status', {'msg': 'Fallback Voice Unavailable'})
+            return
+        except Exception as exc:
+            print(f"[SERVER] Direct text fallback failed: {exc}")
+
+    session_ready = await ensure_audio_session({'muted': True})
+    if not session_ready:
+        print("[SERVER DEBUG] [Error] Session did not become ready. Cannot send text.")
+        detailed_error = None
+        if audio_loop:
+            detailed_error = getattr(audio_loop, 'last_connection_error', None)
+
+        try:
+            fallback_text = await ada.generate_text_reply(text)
+            await sio.emit('status', {'msg': 'Text Fallback Mode'})
+        except Exception as exc:
+            print(f"[SERVER] Text fallback failed: {exc}")
+            fallback_text = _build_local_fallback_reply(text, detailed_error or str(exc) or "Unknown provider startup error")
+            await sio.emit('status', {'msg': 'Fallback Mode'})
+
+        if audio_loop and audio_loop.project_manager:
+            audio_loop.project_manager.log_chat("ADA", fallback_text)
+        await sio.emit('transcription', {'sender': 'ADA', 'text': fallback_text})
+        tts_ok = await _deliver_tts_fallback_audio(fallback_text)
+        if not tts_ok:
+            await sio.emit('status', {'msg': 'Fallback Voice Unavailable'})
+        if detailed_error and "unsupported" not in detailed_error.lower():
+            await sio.emit('error', {
+                'msg': detailed_error or 'ADA session failed to start. Check backend startup logs.'
+            })
         return
 
     if text:
@@ -542,6 +759,7 @@ async def save_memory(sid, data):
             for msg in messages:
                 sender = msg.get('sender', 'Unknown')
                 text = msg.get('text', '')
+                f.write(f"[{sender}]: {text}\n")
         print(f"Conversation saved to {filename}")
         await sio.emit('status', {'msg': 'Memory Saved Successfully'})
 
@@ -717,31 +935,62 @@ async def prompt_web_agent(sid, data):
         await sio.emit('error', {'msg': f"Web Agent Error: {str(e)}"})
 
 @sio.event
-async def generate_content_video(sid, data):
-    print(f"Received content video generation request: {data.get('topic')}")
+async def create_anime_series_package(sid, data):
+    concept = data.get('concept', '')
+    protagonist_name = data.get('protagonist_name', '')
+    episode_count = data.get('episode_count', 3)
+    target_platforms = data.get('target_platforms', 'youtube,tiktok')
 
-    if not audio_loop or not audio_loop.video_content_agent:
-        await sio.emit('error', {'msg': "Video content generator not available"})
+    if not audio_loop or not audio_loop.anime_series_agent:
+        await sio.emit('error', {'msg': 'Anime Series Agent not available'})
         return
 
-    request = {
-        "topic": data.get("topic", "Untitled video"),
-        "niche": data.get("niche", "general"),
-        "narrator_style": data.get("narrator_style", "storyteller"),
-        "video_style": data.get("video_style", "cinematic"),
-        "duration_seconds": max(90, int(data.get("duration_seconds", 90))),
-        "include_intro": bool(data.get("include_intro", True)),
-        "include_outro": bool(data.get("include_outro", True)),
-        "aspect_ratio": data.get("aspect_ratio", "9:16"),
-        "platform_targets": data.get("platform_targets", ["YouTube", "TikTok", "Instagram", "Facebook"]),
-    }
+    try:
+        await sio.emit('status', {'msg': 'Building anime series package...'})
+        result = await audio_loop.anime_series_agent.create_series_package_payload(
+            concept,
+            protagonist_name=protagonist_name,
+            episode_count=episode_count,
+            target_platforms=target_platforms,
+        )
+        await sio.emit('anime_series_result', result)
+        await sio.emit('status', {'msg': 'Anime series package ready'})
+    except Exception as e:
+        print(f"Error creating anime series package: {e}")
+        await sio.emit('error', {'msg': f"Anime Series Error: {str(e)}"})
+
+@sio.event
+async def generate_video_from_shot(sid, data):
+    prompt = data.get('prompt', '')
+    platform = data.get('platform', 'veo')
+    duration = data.get('duration', 1)
+    episode = data.get('episode')
+    shot = data.get('shot')
+
+    if not audio_loop or not audio_loop.video_agent:
+        await sio.emit('error', {'msg': 'Video Agent not available'})
+        return
+
+    if not prompt or not str(prompt).strip():
+        await sio.emit('error', {'msg': 'Video prompt is required'})
+        return
 
     try:
-        await sio.emit('video_content_update', {'status': 'planning', 'message': 'Preparing content video generation...', 'request': request})
-        asyncio.create_task(audio_loop.handle_content_video_request(request))
+        shot_label = f"episode {episode}, shot {shot}" if episode and shot else 'selected shot'
+        await sio.emit('status', {'msg': f'Generating Veo clip for {shot_label}...'})
+        result = await audio_loop.video_agent.generate_long_form_video(prompt, platform, duration)
+        await sio.emit('video_generation_result', {
+            'success': 'generated successfully and saved to:' in result.lower(),
+            'message': result,
+            'prompt': prompt,
+            'platform': platform,
+            'episode': episode,
+            'shot': shot,
+        })
+        await sio.emit('status', {'msg': 'Video generation request finished'})
     except Exception as e:
-        print(f"Error generating content video: {e}")
-        await sio.emit('error', {'msg': f"Video Content Error: {str(e)}"})
+        print(f"Error generating video from shot: {e}")
+        await sio.emit('error', {'msg': f"Video Generation Error: {str(e)}"})
 
 @sio.event
 async def discover_printers(sid):
@@ -1028,13 +1277,10 @@ async def update_tool_permissions(sid, data):
     await sio.emit('tool_permissions', SETTINGS["tool_permissions"])
 
 if __name__ == "__main__":
-    host = os.getenv("ADA_HOST", "0.0.0.0")
-    port = int(os.getenv("ADA_PORT", "8000"))
-
     uvicorn.run(
         "server:app_socketio", 
-        host=host,
-        port=port,
+        host="127.0.0.1", 
+        port=8000, 
         reload=False, # Reload enabled causes spawn of worker which might miss the event loop policy patch
         loop="asyncio",
         reload_excludes=["temp_cad_gen.py", "output.stl", "*.stl"]
