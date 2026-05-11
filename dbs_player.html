@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dragon Ball Super – Stickman Battle Animation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      font-family: 'Impact', 'Arial Black', sans-serif;
+      color: #fff;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: #1E90FF;
+      text-shadow: 0 0 20px #1E90FF88;
+      margin-bottom: 6px;
+      letter-spacing: 3px;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #FFD700;
+      margin-bottom: 16px;
+      font-family: Arial, sans-serif;
+      letter-spacing: 1px;
+    }
+
+    .canvas-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      border: 3px solid #1E90FF44;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 40px #1E90FF33;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fff;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      background: #1E90FF;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-family: 'Impact', sans-serif;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button:hover  { background: #1070CC; transform: scale(1.04); }
+    button:active { transform: scale(0.97); }
+    button.danger { background: #8B0000; }
+    button.danger:hover { background: #AA0000; }
+    button.gold   { background: #B8860B; }
+    button.gold:hover   { background: #DAA520; }
+
+    .seek-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      max-width: 960px;
+      margin-top: 8px;
+    }
+
+    .seek-row label {
+      font-size: 0.85rem;
+      color: #aaa;
+      font-family: Arial, sans-serif;
+      white-space: nowrap;
+    }
+
+    input[type=range] {
+      flex: 1;
+      accent-color: #1E90FF;
+      cursor: pointer;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      width: 100%;
+      max-width: 960px;
+      margin-top: 20px;
+    }
+
+    .info-card {
+      background: #1a1a2e;
+      border: 1px solid #1E90FF33;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .info-card h3 {
+      font-size: 0.75rem;
+      color: #FFD700;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+      font-family: Arial, sans-serif;
+    }
+
+    .char-entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+      font-size: 0.8rem;
+      font-family: Arial, sans-serif;
+    }
+
+    .char-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .move-tag {
+      display: inline-block;
+      background: #FFD70022;
+      border: 1px solid #FFD70055;
+      color: #FFD700;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 0.72rem;
+      font-family: Arial, sans-serif;
+      margin: 2px;
+    }
+
+    .timeline-info {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+
+    .timeline-info span { color: #1E90FF; }
+
+    footer {
+      margin-top: 24px;
+      font-size: 0.75rem;
+      color: #555;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>⚡ DRAGON BALL SUPER</h1>
+  <p class="subtitle">STICKMAN BATTLE ANIMATION — 4:00 MIN EPIC FIGHT</p>
+
+  <div class="canvas-wrapper">
+    <canvas id="dbs-canvas"></canvas>
+  </div>
+
+  <div class="controls">
+    <button id="btn-play">▶ PLAY</button>
+    <button id="btn-pause" class="danger">⏸ PAUSE</button>
+    <button id="btn-restart" class="gold">↺ RESTART</button>
+    <button id="btn-intro">⏩ SKIP TO INTRO</button>
+    <button id="btn-r1">⚔ ROUND 1</button>
+    <button id="btn-r2">💥 ROUND 2</button>
+    <button id="btn-r3">🔥 ROUND 3</button>
+    <button id="btn-outro">🏆 OUTRO</button>
+  </div>
+
+  <div class="seek-row">
+    <label>SEEK:</label>
+    <input type="range" id="seek-bar" min="0" max="240" step="0.5" value="0" />
+    <label id="seek-label" style="min-width:60px; text-align:right;">0:00</label>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-card">
+      <h3>CHARACTER COLOR CODES</h3>
+      <div class="char-entry"><div class="char-dot" style="background:#1E90FF"></div><span>Goku – Ultra Instinct</span></div>
+      <div class="char-entry"><div class="char-dot" style="background:#8B0000"></div><span>Vegeta – Ultra Ego</span></div>
+      <div class="char-entry"><div class="char-dot" style="background:#800080"></div><span>Gohan – Beast Form</span></div>
+      <div class="char-entry"><div class="char-dot" style="background:#006400"></div><span>Broly – Legendary SS</span></div>
+      <div class="char-entry"><div class="char-dot" style="background:#FF4500"></div><span>Jiren – Full Power</span></div>
+      <div class="char-entry"><div class="char-dot" style="background:#9400D3"></div><span>Beerus – God of Destruction</span></div>
+    </div>
+
+    <div class="info-card">
+      <h3>SIGNATURE MOVES</h3>
+      <span class="move-tag">Kamehameha</span>
+      <span class="move-tag">Final Flash</span>
+      <span class="move-tag">Galick Gun</span>
+      <span class="move-tag">Hakai</span>
+      <span class="move-tag">Ultra Instinct</span>
+      <span class="move-tag">Beam Clash</span>
+      <span class="move-tag">Legendary SS</span>
+      <span class="move-tag">Full Power Jiren</span>
+    </div>
+
+    <div class="info-card">
+      <h3>TIMELINE</h3>
+      <div class="timeline-info">
+        <div>🎬 Intro:    <span>0:00 – 0:15</span></div>
+        <div>⚔ Round 1:  <span>0:15 – 0:45</span></div>
+        <div>💥 Round 2:  <span>0:45 – 1:30</span></div>
+        <div>🔥 Round 3:  <span>1:30 – 3:00</span></div>
+        <div>🏆 Victory:  <span>3:00 – 3:30</span></div>
+        <div>📢 Outro:    <span>3:30 – 4:00</span></div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>BATTLE EFFECTS</h3>
+      <span class="move-tag">Punch Impact</span>
+      <span class="move-tag">Kick Impact</span>
+      <span class="move-tag">Ki Blast</span>
+      <span class="move-tag">Explosion</span>
+      <span class="move-tag">Aura Flare</span>
+      <span class="move-tag">Speed Lines</span>
+      <span class="move-tag">Ground Crack</span>
+      <span class="move-tag">Clash Sparks</span>
+      <span class="move-tag">Teleport</span>
+      <span class="move-tag">Screen Shake</span>
+    </div>
+  </div>
+
+  <footer>
+    Template JSON: <strong>dbs_stickman_animation_template.json</strong> &nbsp;|&nbsp;
+    Renderer: <strong>dbs_renderer.js</strong> &nbsp;|&nbsp;
+    Pure white background · Single-line stickman · Color-coded characters · 1920×1080 @ 60fps
+  </footer>
+
+  <!-- Load renderer -->
+  <script src="dbs_renderer.js"></script>
+
+  <script>
+    (async () => {
+      // Load the JSON template
+      let template;
+      try {
+        const res = await fetch('./dbs_stickman_animation_template.json');
+        template = await res.json();
+      } catch (e) {
+        console.error('Failed to load template JSON:', e);
+        document.querySelector('.canvas-wrapper').innerHTML =
+          '<p style="color:red;padding:20px;">⚠ Could not load template JSON. Serve this file via a local HTTP server.</p>';
+        return;
+      }
+
+      const canvas = document.getElementById('dbs-canvas');
+      const engine = new DBSAnimationEngine(canvas, template);
+
+      // Scale canvas display to fit container
+      canvas.style.width  = '100%';
+      canvas.style.height = 'auto';
+
+      // Controls
+      document.getElementById('btn-play').onclick    = () => engine.play();
+      document.getElementById('btn-pause').onclick   = () => engine.pause();
+      document.getElementById('btn-restart').onclick = () => { engine.pause(); engine.seek(0); engine.play(); };
+      document.getElementById('btn-intro').onclick   = () => { engine.seek(0);   engine.play(); };
+      document.getElementById('btn-r1').onclick      = () => { engine.seek(15);  engine.play(); };
+      document.getElementById('btn-r2').onclick      = () => { engine.seek(45);  engine.play(); };
+      document.getElementById('btn-r3').onclick      = () => { engine.seek(90);  engine.play(); };
+      document.getElementById('btn-outro').onclick   = () => { engine.seek(210); engine.play(); };
+
+      // Seek bar
+      const seekBar   = document.getElementById('seek-bar');
+      const seekLabel = document.getElementById('seek-label');
+
+      seekBar.addEventListener('input', () => {
+        const t = parseFloat(seekBar.value);
+        engine.pause();
+        engine.seek(t);
+        const m = Math.floor(t / 60);
+        const s = Math.floor(t % 60).toString().padStart(2, '0');
+        seekLabel.textContent = `${m}:${s}`;
+      });
+
+      // Sync seek bar with playback
+      setInterval(() => {
+        if (engine.playing) {
+          seekBar.value = engine.currentTimeSec;
+          const t = engine.currentTimeSec;
+          const m = Math.floor(t / 60);
+          const s = Math.floor(t % 60).toString().padStart(2, '0');
+          seekLabel.textContent = `${m}:${s}`;
+        }
+      }, 200);
+
+      // Auto-start
+      engine.play();
+    })();
+  </script>
+</body>
+</html>

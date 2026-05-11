@@ -1,0 +1,1667 @@
+{
+  "meta": {
+    "title": "Dragon Ball Super – Stickman Battle Animation",
+    "description": "Copy-paste JSON template for a 3–5 minute animated stickman Dragon Ball Super battle video. Pure white background, single-line stickman characters, color-coded per fighter, with battle effects, intro, and outro.",
+    "version": "1.0.0",
+    "author": "DBS Animation Studio",
+    "duration_seconds": 240,
+    "fps": 60,
+    "resolution": { "width": 1920, "height": 1080 },
+    "aspect_ratio": "16:9",
+    "background_color": "#FFFFFF",
+    "stroke_width": 3,
+    "style": "stickman_single_line"
+  },
+
+  "characters": {
+    "goku": {
+      "id": "goku",
+      "name": "Son Goku",
+      "form": "Ultra Instinct",
+      "color": "#1E90FF",
+      "aura_color": "#87CEEB",
+      "eye_color": "#C0C0C0",
+      "hair_glow": "#FFFFFF",
+      "stroke_width": 3,
+      "scale": 1.0,
+      "stickman": {
+        "head_radius": 18,
+        "body_length": 60,
+        "arm_length": 40,
+        "leg_length": 50,
+        "joint_radius": 4
+      },
+      "start_position": { "x": 300, "y": 540 },
+      "facing": "right"
+    },
+    "vegeta": {
+      "id": "vegeta",
+      "name": "Vegeta",
+      "form": "Ultra Ego",
+      "color": "#8B0000",
+      "aura_color": "#FF4500",
+      "eye_color": "#FF0000",
+      "hair_glow": "#FF6347",
+      "stroke_width": 3,
+      "scale": 1.0,
+      "stickman": {
+        "head_radius": 18,
+        "body_length": 60,
+        "arm_length": 40,
+        "leg_length": 50,
+        "joint_radius": 4
+      },
+      "start_position": { "x": 1620, "y": 540 },
+      "facing": "left"
+    },
+    "gohan": {
+      "id": "gohan",
+      "name": "Son Gohan",
+      "form": "Beast",
+      "color": "#800080",
+      "aura_color": "#DA70D6",
+      "eye_color": "#FF00FF",
+      "hair_glow": "#EE82EE",
+      "stroke_width": 3,
+      "scale": 1.0,
+      "stickman": {
+        "head_radius": 18,
+        "body_length": 60,
+        "arm_length": 40,
+        "leg_length": 50,
+        "joint_radius": 4
+      },
+      "start_position": { "x": 500, "y": 540 },
+      "facing": "right"
+    },
+    "broly": {
+      "id": "broly",
+      "name": "Broly",
+      "form": "Legendary Super Saiyan",
+      "color": "#006400",
+      "aura_color": "#00FF00",
+      "eye_color": "#ADFF2F",
+      "hair_glow": "#7FFF00",
+      "stroke_width": 4,
+      "scale": 1.3,
+      "stickman": {
+        "head_radius": 22,
+        "body_length": 75,
+        "arm_length": 52,
+        "leg_length": 62,
+        "joint_radius": 5
+      },
+      "start_position": { "x": 1400, "y": 510 },
+      "facing": "left"
+    },
+    "jiren": {
+      "id": "jiren",
+      "name": "Jiren",
+      "form": "Full Power",
+      "color": "#FF4500",
+      "aura_color": "#FF6347",
+      "eye_color": "#FFD700",
+      "hair_glow": "#FF8C00",
+      "stroke_width": 4,
+      "scale": 1.2,
+      "stickman": {
+        "head_radius": 20,
+        "body_length": 70,
+        "arm_length": 48,
+        "leg_length": 58,
+        "joint_radius": 5
+      },
+      "start_position": { "x": 1500, "y": 520 },
+      "facing": "left"
+    },
+    "beerus": {
+      "id": "beerus",
+      "name": "Beerus",
+      "form": "God of Destruction",
+      "color": "#9400D3",
+      "aura_color": "#EE82EE",
+      "eye_color": "#FFD700",
+      "hair_glow": "#BA55D3",
+      "stroke_width": 3,
+      "scale": 1.1,
+      "stickman": {
+        "head_radius": 19,
+        "body_length": 65,
+        "arm_length": 44,
+        "leg_length": 54,
+        "joint_radius": 4
+      },
+      "start_position": { "x": 960, "y": 200 },
+      "facing": "down"
+    }
+  },
+
+  "color_legend": {
+    "display": true,
+    "position": { "x": 30, "y": 30 },
+    "background": "rgba(0,0,0,0.08)",
+    "border_radius": 10,
+    "padding": 12,
+    "entries": [
+      { "character": "goku",   "label": "Goku (Ultra Instinct)",          "color": "#1E90FF" },
+      { "character": "vegeta", "label": "Vegeta (Ultra Ego)",              "color": "#8B0000" },
+      { "character": "gohan",  "label": "Gohan Beast",                    "color": "#800080" },
+      { "character": "broly",  "label": "Broly (Legendary SS)",           "color": "#006400" },
+      { "character": "jiren",  "label": "Jiren (Full Power)",             "color": "#FF4500" },
+      { "character": "beerus", "label": "Beerus (God of Destruction)",    "color": "#9400D3" }
+    ]
+  },
+
+  "effects_library": {
+    "punch": {
+      "id": "punch",
+      "label": "Punch Impact",
+      "shapes": [
+        { "type": "starburst", "spikes": 8, "inner_radius": 10, "outer_radius": 35, "color": "#FFD700", "opacity": 1.0 },
+        { "type": "ring",      "radius": 50, "stroke_width": 3, "color": "#FFA500", "opacity": 0.7 },
+        { "type": "lines",     "count": 6,   "length": 40,      "color": "#FF4500", "opacity": 0.8 }
+      ],
+      "sound_cue": "punch_heavy",
+      "screen_shake": { "intensity": 4, "duration_ms": 120 },
+      "duration_ms": 300,
+      "scale_keyframes": [
+        { "t": 0,   "scale": 0.1 },
+        { "t": 0.3, "scale": 1.2 },
+        { "t": 0.7, "scale": 1.0 },
+        { "t": 1.0, "scale": 0.0 }
+      ]
+    },
+    "kick": {
+      "id": "kick",
+      "label": "Kick Impact",
+      "shapes": [
+        { "type": "starburst", "spikes": 6, "inner_radius": 8, "outer_radius": 30, "color": "#FF6347", "opacity": 1.0 },
+        { "type": "ring",      "radius": 45, "stroke_width": 2, "color": "#FF4500", "opacity": 0.6 },
+        { "type": "arc_lines", "count": 5,   "length": 35,      "color": "#FF0000", "opacity": 0.7 }
+      ],
+      "sound_cue": "kick_heavy",
+      "screen_shake": { "intensity": 3, "duration_ms": 100 },
+      "duration_ms": 280,
+      "scale_keyframes": [
+        { "t": 0,   "scale": 0.1 },
+        { "t": 0.25,"scale": 1.1 },
+        { "t": 0.6, "scale": 1.0 },
+        { "t": 1.0, "scale": 0.0 }
+      ]
+    },
+    "ki_blast": {
+      "id": "ki_blast",
+      "label": "Ki Blast",
+      "shapes": [
+        { "type": "circle",    "radius": 20, "fill": true,  "color": "#00BFFF", "opacity": 0.9 },
+        { "type": "ring",      "radius": 30, "stroke_width": 2, "color": "#87CEEB", "opacity": 0.6 },
+        { "type": "glow",      "radius": 50, "color": "#1E90FF", "opacity": 0.3 }
+      ],
+      "trail": {
+        "enabled": true,
+        "length": 80,
+        "fade_opacity": 0.2,
+        "color": "#87CEEB"
+      },
+      "sound_cue": "ki_blast",
+      "screen_shake": { "intensity": 2, "duration_ms": 80 },
+      "duration_ms": 600,
+      "travel_speed_px_per_sec": 800
+    },
+    "kamehameha": {
+      "id": "kamehameha",
+      "label": "Kamehameha Wave",
+      "beam": {
+        "width_start": 60,
+        "width_end": 120,
+        "color_core": "#FFFFFF",
+        "color_mid": "#00BFFF",
+        "color_edge": "#1E90FF",
+        "length": 1200,
+        "glow_radius": 40
+      },
+      "charge_effect": {
+        "duration_ms": 800,
+        "orb_radius_start": 5,
+        "orb_radius_end": 45,
+        "orb_color": "#00BFFF",
+        "particle_count": 30,
+        "particle_color": "#87CEEB"
+      },
+      "sound_cue": "kamehameha_charge",
+      "screen_shake": { "intensity": 10, "duration_ms": 1500 },
+      "duration_ms": 2000
+    },
+    "final_flash": {
+      "id": "final_flash",
+      "label": "Final Flash",
+      "beam": {
+        "width_start": 80,
+        "width_end": 150,
+        "color_core": "#FFFFFF",
+        "color_mid": "#FFD700",
+        "color_edge": "#FF8C00",
+        "length": 1400,
+        "glow_radius": 60
+      },
+      "charge_effect": {
+        "duration_ms": 1200,
+        "orb_radius_start": 5,
+        "orb_radius_end": 60,
+        "orb_color": "#FFD700",
+        "particle_count": 50,
+        "particle_color": "#FFA500"
+      },
+      "sound_cue": "final_flash_charge",
+      "screen_shake": { "intensity": 14, "duration_ms": 2000 },
+      "duration_ms": 2500
+    },
+    "galick_gun": {
+      "id": "galick_gun",
+      "label": "Galick Gun",
+      "beam": {
+        "width_start": 55,
+        "width_end": 100,
+        "color_core": "#FFFFFF",
+        "color_mid": "#DA70D6",
+        "color_edge": "#8B0000",
+        "length": 1100,
+        "glow_radius": 35
+      },
+      "charge_effect": {
+        "duration_ms": 700,
+        "orb_radius_start": 5,
+        "orb_radius_end": 40,
+        "orb_color": "#DA70D6",
+        "particle_count": 25,
+        "particle_color": "#EE82EE"
+      },
+      "sound_cue": "galick_gun_charge",
+      "screen_shake": { "intensity": 9, "duration_ms": 1400 },
+      "duration_ms": 1800
+    },
+    "hakai": {
+      "id": "hakai",
+      "label": "Hakai (Destruction)",
+      "shapes": [
+        { "type": "expanding_ring", "start_radius": 10, "end_radius": 300, "color": "#9400D3", "opacity": 0.8, "stroke_width": 5 },
+        { "type": "particle_burst", "count": 80, "color": "#EE82EE", "max_radius": 250 },
+        { "type": "glow_flash",     "color": "#FFFFFF", "opacity": 1.0, "duration_ms": 200 }
+      ],
+      "sound_cue": "hakai",
+      "screen_shake": { "intensity": 20, "duration_ms": 1000 },
+      "duration_ms": 1500
+    },
+    "ultra_instinct_dodge": {
+      "id": "ultra_instinct_dodge",
+      "label": "Ultra Instinct Dodge",
+      "shapes": [
+        { "type": "afterimage", "count": 5, "color": "#C0C0C0", "opacity_start": 0.6, "opacity_end": 0.0, "spacing_px": 20 },
+        { "type": "ring",       "radius": 60, "stroke_width": 2, "color": "#87CEEB", "opacity": 0.5 }
+      ],
+      "sound_cue": "ui_dodge",
+      "duration_ms": 200
+    },
+    "explosion_large": {
+      "id": "explosion_large",
+      "label": "Large Explosion",
+      "shapes": [
+        { "type": "circle",        "radius": 120, "fill": true,  "color": "#FF4500", "opacity": 0.9 },
+        { "type": "ring",          "radius": 160, "stroke_width": 6, "color": "#FFD700", "opacity": 0.8 },
+        { "type": "particle_burst","count": 60,   "color": "#FF6347", "max_radius": 200 },
+        { "type": "smoke_puff",    "count": 12,   "color": "#808080", "opacity": 0.5 }
+      ],
+      "sound_cue": "explosion_large",
+      "screen_shake": { "intensity": 18, "duration_ms": 800 },
+      "duration_ms": 1200,
+      "scale_keyframes": [
+        { "t": 0,   "scale": 0.0 },
+        { "t": 0.2, "scale": 1.3 },
+        { "t": 0.5, "scale": 1.0 },
+        { "t": 1.0, "scale": 0.0 }
+      ]
+    },
+    "speed_lines": {
+      "id": "speed_lines",
+      "label": "Speed / Rush Lines",
+      "shapes": [
+        { "type": "radial_lines", "count": 20, "length_min": 60, "length_max": 200, "color": "#CCCCCC", "opacity": 0.6, "stroke_width": 1.5 }
+      ],
+      "duration_ms": 150
+    },
+    "aura_flare": {
+      "id": "aura_flare",
+      "label": "Power-Up Aura Flare",
+      "shapes": [
+        { "type": "flame_aura",   "height": 120, "width": 60,  "color": "character_aura_color", "opacity": 0.85 },
+        { "type": "ring_pulse",   "radius": 80,  "count": 3,   "color": "character_aura_color", "opacity": 0.5 },
+        { "type": "particle_rise","count": 40,   "color": "character_aura_color", "opacity": 0.7 }
+      ],
+      "loop": true,
+      "duration_ms": 500
+    },
+    "clash_sparks": {
+      "id": "clash_sparks",
+      "label": "Weapon / Fist Clash Sparks",
+      "shapes": [
+        { "type": "spark_burst", "count": 20, "color": "#FFD700", "max_radius": 60, "opacity": 1.0 },
+        { "type": "ring",        "radius": 40, "stroke_width": 2, "color": "#FFA500", "opacity": 0.7 }
+      ],
+      "sound_cue": "clash",
+      "screen_shake": { "intensity": 5, "duration_ms": 80 },
+      "duration_ms": 250
+    },
+    "ground_crack": {
+      "id": "ground_crack",
+      "label": "Ground Crack on Landing",
+      "shapes": [
+        { "type": "crack_lines", "count": 8, "length_min": 30, "length_max": 120, "color": "#555555", "stroke_width": 2 },
+        { "type": "dust_cloud",  "count": 10, "color": "#AAAAAA", "opacity": 0.5 }
+      ],
+      "sound_cue": "ground_impact",
+      "screen_shake": { "intensity": 6, "duration_ms": 150 },
+      "duration_ms": 600
+    },
+    "teleport": {
+      "id": "teleport",
+      "label": "Instant Transmission / Teleport",
+      "shapes": [
+        { "type": "flash",       "color": "#FFFFFF", "opacity": 1.0, "duration_ms": 80 },
+        { "type": "ring_expand", "radius_start": 5, "radius_end": 80, "color": "#87CEEB", "opacity": 0.6 }
+      ],
+      "sound_cue": "teleport",
+      "duration_ms": 200
+    }
+  },
+
+  "animation_poses": {
+    "idle": {
+      "id": "idle",
+      "keyframes": [
+        { "frame": 0,  "head": { "y_offset": 0 }, "body": { "lean": 0 }, "arms": { "left_angle": -20, "right_angle": 20 }, "legs": { "left_angle": 5, "right_angle": -5 } },
+        { "frame": 30, "head": { "y_offset": -2 }, "body": { "lean": 0 }, "arms": { "left_angle": -22, "right_angle": 22 }, "legs": { "left_angle": 5, "right_angle": -5 } },
+        { "frame": 60, "head": { "y_offset": 0 }, "body": { "lean": 0 }, "arms": { "left_angle": -20, "right_angle": 20 }, "legs": { "left_angle": 5, "right_angle": -5 } }
+      ],
+      "loop": true
+    },
+    "battle_stance": {
+      "id": "battle_stance",
+      "keyframes": [
+        { "frame": 0, "head": { "y_offset": 0 }, "body": { "lean": 10 }, "arms": { "left_angle": -60, "right_angle": -30 }, "legs": { "left_angle": 25, "right_angle": -25 } }
+      ],
+      "loop": false
+    },
+    "punch_right": {
+      "id": "punch_right",
+      "keyframes": [
+        { "frame": 0,  "body": { "lean": 5  }, "arms": { "left_angle": -40, "right_angle": -80 }, "legs": { "left_angle": 20, "right_angle": -20 } },
+        { "frame": 8,  "body": { "lean": 15 }, "arms": { "left_angle": -50, "right_angle": 10  }, "legs": { "left_angle": 25, "right_angle": -25 } },
+        { "frame": 16, "body": { "lean": 5  }, "arms": { "left_angle": -40, "right_angle": -80 }, "legs": { "left_angle": 20, "right_angle": -20 } }
+      ],
+      "effect_at_frame": 8,
+      "effect_id": "punch",
+      "loop": false
+    },
+    "punch_left": {
+      "id": "punch_left",
+      "keyframes": [
+        { "frame": 0,  "body": { "lean": -5  }, "arms": { "left_angle": -80, "right_angle": -40 }, "legs": { "left_angle": 20, "right_angle": -20 } },
+        { "frame": 8,  "body": { "lean": -15 }, "arms": { "left_angle": 10,  "right_angle": -50 }, "legs": { "left_angle": 25, "right_angle": -25 } },
+        { "frame": 16, "body": { "lean": -5  }, "arms": { "left_angle": -80, "right_angle": -40 }, "legs": { "left_angle": 20, "right_angle": -20 } }
+      ],
+      "effect_at_frame": 8,
+      "effect_id": "punch",
+      "loop": false
+    },
+    "kick_high": {
+      "id": "kick_high",
+      "keyframes": [
+        { "frame": 0,  "body": { "lean": 5  }, "arms": { "left_angle": -60, "right_angle": 30 }, "legs": { "left_angle": 10, "right_angle": -10 } },
+        { "frame": 10, "body": { "lean": 20 }, "arms": { "left_angle": -70, "right_angle": 40 }, "legs": { "left_angle": -80, "right_angle": -10 } },
+        { "frame": 20, "body": { "lean": 5  }, "arms": { "left_angle": -60, "right_angle": 30 }, "legs": { "left_angle": 10, "right_angle": -10 } }
+      ],
+      "effect_at_frame": 10,
+      "effect_id": "kick",
+      "loop": false
+    },
+    "kick_sweep": {
+      "id": "kick_sweep",
+      "keyframes": [
+        { "frame": 0,  "body": { "lean": -10 }, "arms": { "left_angle": 60, "right_angle": -30 }, "legs": { "left_angle": 10, "right_angle": -10 } },
+        { "frame": 10, "body": { "lean": -5  }, "arms": { "left_angle": 70, "right_angle": -40 }, "legs": { "left_angle": 10, "right_angle": 80  } },
+        { "frame": 20, "body": { "lean": -10 }, "arms": { "left_angle": 60, "right_angle": -30 }, "legs": { "left_angle": 10, "right_angle": -10 } }
+      ],
+      "effect_at_frame": 10,
+      "effect_id": "kick",
+      "loop": false
+    },
+    "dodge_back": {
+      "id": "dodge_back",
+      "keyframes": [
+        { "frame": 0, "body": { "lean": 0  }, "arms": { "left_angle": -20, "right_angle": 20 }, "legs": { "left_angle": 5, "right_angle": -5 } },
+        { "frame": 6, "body": { "lean": -30 }, "arms": { "left_angle": 30, "right_angle": 60 }, "legs": { "left_angle": -10, "right_angle": 30 } },
+        { "frame": 14,"body": { "lean": 0  }, "arms": { "left_angle": -20, "right_angle": 20 }, "legs": { "left_angle": 5, "right_angle": -5 } }
+      ],
+      "effect_at_frame": 6,
+      "effect_id": "ultra_instinct_dodge",
+      "loop": false
+    },
+    "power_up": {
+      "id": "power_up",
+      "keyframes": [
+        { "frame": 0,  "head": { "y_offset": 0  }, "body": { "lean": 0  }, "arms": { "left_angle": -10, "right_angle": 10 }, "legs": { "left_angle": 15, "right_angle": -15 } },
+        { "frame": 20, "head": { "y_offset": -5 }, "body": { "lean": 0  }, "arms": { "left_angle": -40, "right_angle": 40 }, "legs": { "left_angle": 20, "right_angle": -20 } },
+        { "frame": 40, "head": { "y_offset": -8 }, "body": { "lean": 0  }, "arms": { "left_angle": -60, "right_angle": 60 }, "legs": { "left_angle": 25, "right_angle": -25 } }
+      ],
+      "effect_at_frame": 0,
+      "effect_id": "aura_flare",
+      "loop": false
+    },
+    "charge_beam": {
+      "id": "charge_beam",
+      "keyframes": [
+        { "frame": 0,  "body": { "lean": 5 }, "arms": { "left_angle": -90, "right_angle": -90 }, "legs": { "left_angle": 20, "right_angle": -20 } },
+        { "frame": 20, "body": { "lean": 5 }, "arms": { "left_angle": -85, "right_angle": -85 }, "legs": { "left_angle": 20, "right_angle": -20 } }
+      ],
+      "loop": false
+    },
+    "fire_beam": {
+      "id": "fire_beam",
+      "keyframes": [
+        { "frame": 0, "body": { "lean": 15 }, "arms": { "left_angle": 10, "right_angle": 10 }, "legs": { "left_angle": 25, "right_angle": -25 } },
+        { "frame": 5, "body": { "lean": 20 }, "arms": { "left_angle": 5,  "right_angle": 5  }, "legs": { "left_angle": 25, "right_angle": -25 } }
+      ],
+      "loop": false
+    },
+    "knocked_back": {
+      "id": "knocked_back",
+      "keyframes": [
+        { "frame": 0,  "body": { "lean": -40 }, "arms": { "left_angle": 60, "right_angle": 80 }, "legs": { "left_angle": -20, "right_angle": 20 } },
+        { "frame": 15, "body": { "lean": -50 }, "arms": { "left_angle": 70, "right_angle": 90 }, "legs": { "left_angle": -30, "right_angle": 30 } },
+        { "frame": 30, "body": { "lean": 0   }, "arms": { "left_angle": -20, "right_angle": 20 }, "legs": { "left_angle": 5, "right_angle": -5 } }
+      ],
+      "effect_at_frame": 0,
+      "effect_id": "speed_lines",
+      "loop": false
+    },
+    "landing": {
+      "id": "landing",
+      "keyframes": [
+        { "frame": 0, "body": { "lean": 0 }, "arms": { "left_angle": -60, "right_angle": 60 }, "legs": { "left_angle": 40, "right_angle": -40 } },
+        { "frame": 8, "body": { "lean": 0 }, "arms": { "left_angle": -30, "right_angle": 30 }, "legs": { "left_angle": 20, "right_angle": -20 } }
+      ],
+      "effect_at_frame": 0,
+      "effect_id": "ground_crack",
+      "loop": false
+    },
+    "victory_pose": {
+      "id": "victory_pose",
+      "keyframes": [
+        { "frame": 0,  "body": { "lean": 0 }, "arms": { "left_angle": -150, "right_angle": 150 }, "legs": { "left_angle": 5, "right_angle": -5 } },
+        { "frame": 30, "body": { "lean": 0 }, "arms": { "left_angle": -160, "right_angle": 160 }, "legs": { "left_angle": 5, "right_angle": -5 } }
+      ],
+      "loop": true
+    }
+  },
+
+  "camera": {
+    "default_zoom": 1.0,
+    "pan_speed": 200,
+    "zoom_speed": 0.5,
+    "shake_decay": 0.85,
+    "presets": {
+      "wide":       { "zoom": 0.7,  "description": "Full arena view" },
+      "medium":     { "zoom": 1.0,  "description": "Standard battle view" },
+      "close":      { "zoom": 1.6,  "description": "Close-up on fighters" },
+      "extreme_close": { "zoom": 2.5, "description": "Face / expression close-up" },
+      "overhead":   { "zoom": 0.6,  "description": "Top-down view" },
+      "cinematic":  { "zoom": 1.2,  "description": "Cinematic widescreen" }
+    }
+  },
+
+  "text_overlays": {
+    "title_card": {
+      "id": "title_card",
+      "text": "DRAGON BALL SUPER",
+      "sub_text": "STICKMAN BATTLE",
+      "font_family": "Impact, Arial Black, sans-serif",
+      "font_size": 96,
+      "sub_font_size": 48,
+      "color": "#1E90FF",
+      "sub_color": "#FFD700",
+      "stroke_color": "#000000",
+      "stroke_width": 4,
+      "position": { "x": 960, "y": 400 },
+      "align": "center",
+      "animation": "zoom_in_bounce",
+      "duration_ms": 3000
+    },
+    "vs_card": {
+      "id": "vs_card",
+      "text": "VS",
+      "font_family": "Impact, sans-serif",
+      "font_size": 140,
+      "color": "#FF0000",
+      "stroke_color": "#FFD700",
+      "stroke_width": 6,
+      "position": { "x": 960, "y": 540 },
+      "align": "center",
+      "animation": "flash_pulse",
+      "duration_ms": 1500
+    },
+    "character_name_tag": {
+      "id": "character_name_tag",
+      "font_family": "Arial Black, sans-serif",
+      "font_size": 28,
+      "color": "character_color",
+      "stroke_color": "#000000",
+      "stroke_width": 2,
+      "offset_y": -110,
+      "align": "center",
+      "animation": "fade_in",
+      "duration_ms": 500
+    },
+    "move_name": {
+      "id": "move_name",
+      "font_family": "Impact, sans-serif",
+      "font_size": 52,
+      "color": "#FFD700",
+      "stroke_color": "#FF4500",
+      "stroke_width": 3,
+      "position": { "x": 960, "y": 900 },
+      "align": "center",
+      "animation": "slide_up_fade",
+      "duration_ms": 1200
+    },
+    "round_banner": {
+      "id": "round_banner",
+      "font_family": "Impact, sans-serif",
+      "font_size": 80,
+      "color": "#FFFFFF",
+      "stroke_color": "#000000",
+      "stroke_width": 5,
+      "background": "#FF0000",
+      "padding": 20,
+      "position": { "x": 960, "y": 540 },
+      "align": "center",
+      "animation": "zoom_in_bounce",
+      "duration_ms": 1000
+    },
+    "outro_cta": {
+      "id": "outro_cta",
+      "lines": [
+        { "text": "LIKE & SUBSCRIBE",  "font_size": 72, "color": "#FF0000", "stroke_color": "#FFFFFF", "stroke_width": 3 },
+        { "text": "for more battles!", "font_size": 40, "color": "#1E90FF", "stroke_color": "#000000", "stroke_width": 2 },
+        { "text": "🔔 Turn on Notifications", "font_size": 32, "color": "#FFD700", "stroke_color": "#000000", "stroke_width": 2 }
+      ],
+      "position": { "x": 960, "y": 480 },
+      "align": "center",
+      "animation": "stagger_fade_in",
+      "stagger_ms": 400,
+      "duration_ms": 5000
+    }
+  },
+
+  "music_cues": {
+    "intro_theme":    { "id": "intro_theme",    "label": "Epic Orchestral Intro",   "start_sec": 0,   "end_sec": 15,  "fade_in_sec": 2, "fade_out_sec": 2, "volume": 0.9 },
+    "battle_theme_1": { "id": "battle_theme_1", "label": "Intense Battle Theme",    "start_sec": 15,  "end_sec": 120, "fade_in_sec": 1, "fade_out_sec": 3, "volume": 0.85 },
+    "power_up_sting": { "id": "power_up_sting", "label": "Power-Up Sting",          "start_sec": 0,   "end_sec": 4,   "fade_in_sec": 0, "fade_out_sec": 1, "volume": 1.0 },
+    "battle_theme_2": { "id": "battle_theme_2", "label": "Climax Battle Theme",     "start_sec": 120, "end_sec": 210, "fade_in_sec": 2, "fade_out_sec": 3, "volume": 0.9 },
+    "victory_theme":  { "id": "victory_theme",  "label": "Victory Fanfare",         "start_sec": 210, "end_sec": 225, "fade_in_sec": 1, "fade_out_sec": 2, "volume": 0.9 },
+    "outro_theme":    { "id": "outro_theme",    "label": "Calm Outro / Subscribe",  "start_sec": 225, "end_sec": 240, "fade_in_sec": 2, "fade_out_sec": 3, "volume": 0.7 }
+  },
+
+  "timeline": {
+    "total_duration_sec": 240,
+    "segments": [
+
+      {
+        "id": "intro",
+        "label": "INTRO",
+        "start_sec": 0,
+        "end_sec": 15,
+        "type": "intro",
+        "background_color": "#FFFFFF",
+        "camera": "wide",
+        "events": [
+          {
+            "time_sec": 0.0,
+            "type": "text_overlay",
+            "overlay_id": "title_card",
+            "data": { "text": "DRAGON BALL SUPER", "sub_text": "STICKMAN BATTLE" }
+          },
+          {
+            "time_sec": 0.5,
+            "type": "music",
+            "music_id": "intro_theme"
+          },
+          {
+            "time_sec": 3.0,
+            "type": "character_enter",
+            "character": "goku",
+            "enter_from": "left",
+            "enter_animation": "dash_in",
+            "target_position": { "x": 350, "y": 540 }
+          },
+          {
+            "time_sec": 3.5,
+            "type": "character_enter",
+            "character": "vegeta",
+            "enter_from": "right",
+            "enter_animation": "dash_in",
+            "target_position": { "x": 1570, "y": 540 }
+          },
+          {
+            "time_sec": 4.0,
+            "type": "text_overlay",
+            "overlay_id": "character_name_tag",
+            "data": { "character": "goku", "text": "SON GOKU\nUltra Instinct" }
+          },
+          {
+            "time_sec": 4.0,
+            "type": "text_overlay",
+            "overlay_id": "character_name_tag",
+            "data": { "character": "vegeta", "text": "VEGETA\nUltra Ego" }
+          },
+          {
+            "time_sec": 5.5,
+            "type": "text_overlay",
+            "overlay_id": "vs_card",
+            "data": {}
+          },
+          {
+            "time_sec": 7.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "battle_stance"
+          },
+          {
+            "time_sec": 7.0,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "battle_stance"
+          },
+          {
+            "time_sec": 9.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 9.5,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "vegeta",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 12.0,
+            "type": "text_overlay",
+            "overlay_id": "round_banner",
+            "data": { "text": "ROUND 1 – FIGHT!" }
+          },
+          {
+            "time_sec": 14.0,
+            "type": "music",
+            "music_id": "battle_theme_1"
+          }
+        ]
+      },
+
+      {
+        "id": "round_1_opening_clash",
+        "label": "Round 1 – Opening Clash",
+        "start_sec": 15,
+        "end_sec": 45,
+        "type": "battle",
+        "camera": "medium",
+        "events": [
+          {
+            "time_sec": 15.0,
+            "type": "move",
+            "character": "goku",
+            "move": "dash_forward",
+            "target_position": { "x": 900, "y": 540 },
+            "duration_ms": 400
+          },
+          {
+            "time_sec": 15.4,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "punch_right"
+          },
+          {
+            "time_sec": 15.5,
+            "type": "effect",
+            "effect_id": "clash_sparks",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 15.5,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "dodge_back"
+          },
+          {
+            "time_sec": 16.0,
+            "type": "effect",
+            "effect_id": "speed_lines",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 16.2,
+            "type": "move",
+            "character": "vegeta",
+            "move": "dash_forward",
+            "target_position": { "x": 1000, "y": 540 },
+            "duration_ms": 300
+          },
+          {
+            "time_sec": 16.5,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "punch_left"
+          },
+          {
+            "time_sec": 16.6,
+            "type": "effect",
+            "effect_id": "punch",
+            "position": { "x": 880, "y": 520 }
+          },
+          {
+            "time_sec": 16.6,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "knocked_back"
+          },
+          {
+            "time_sec": 16.6,
+            "type": "move",
+            "character": "goku",
+            "move": "slide_back",
+            "target_position": { "x": 600, "y": 540 },
+            "duration_ms": 500
+          },
+          {
+            "time_sec": 17.5,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "battle_stance"
+          },
+          {
+            "time_sec": 18.0,
+            "type": "combo_sequence",
+            "attacker": "goku",
+            "defender": "vegeta",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_right", "effect": "punch",      "hit_position": { "x": 1100, "y": 510 } },
+              { "delay_ms": 350, "pose": "kick_high",   "effect": "kick",       "hit_position": { "x": 1100, "y": 480 } },
+              { "delay_ms": 700, "pose": "punch_left",  "effect": "punch",      "hit_position": { "x": 1100, "y": 520 } },
+              { "delay_ms": 1050,"pose": "kick_sweep",  "effect": "kick",       "hit_position": { "x": 1100, "y": 560 } },
+              { "delay_ms": 1400,"pose": "punch_right", "effect": "clash_sparks","hit_position": { "x": 1100, "y": 510 } }
+            ]
+          },
+          {
+            "time_sec": 20.5,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "knocked_back"
+          },
+          {
+            "time_sec": 20.5,
+            "type": "move",
+            "character": "vegeta",
+            "move": "slide_back",
+            "target_position": { "x": 1500, "y": 540 },
+            "duration_ms": 600
+          },
+          {
+            "time_sec": 21.5,
+            "type": "effect",
+            "effect_id": "ground_crack",
+            "position": { "x": 1500, "y": 590 }
+          },
+          {
+            "time_sec": 22.0,
+            "type": "camera_change",
+            "preset": "close",
+            "pan_to": { "x": 1500, "y": 540 }
+          },
+          {
+            "time_sec": 22.5,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "power_up"
+          },
+          {
+            "time_sec": 22.5,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "vegeta",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 22.5,
+            "type": "music",
+            "music_id": "power_up_sting"
+          },
+          {
+            "time_sec": 25.0,
+            "type": "camera_change",
+            "preset": "medium",
+            "pan_to": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 25.5,
+            "type": "combo_sequence",
+            "attacker": "vegeta",
+            "defender": "goku",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_left",  "effect": "punch",  "hit_position": { "x": 700, "y": 510 } },
+              { "delay_ms": 300, "pose": "kick_high",   "effect": "kick",   "hit_position": { "x": 700, "y": 480 } },
+              { "delay_ms": 600, "pose": "punch_right", "effect": "punch",  "hit_position": { "x": 700, "y": 520 } },
+              { "delay_ms": 900, "pose": "kick_sweep",  "effect": "kick",   "hit_position": { "x": 700, "y": 560 } }
+            ]
+          },
+          {
+            "time_sec": 27.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "dodge_back"
+          },
+          {
+            "time_sec": 27.0,
+            "type": "effect",
+            "effect_id": "ultra_instinct_dodge",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 28.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "ULTRA INSTINCT!" }
+          },
+          {
+            "time_sec": 30.0,
+            "type": "ki_blast_exchange",
+            "fighters": ["goku", "vegeta"],
+            "blasts_per_fighter": 4,
+            "interval_ms": 400,
+            "blast_effect": "ki_blast"
+          },
+          {
+            "time_sec": 35.0,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 35.0,
+            "type": "camera_change",
+            "preset": "wide"
+          },
+          {
+            "time_sec": 38.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "battle_stance"
+          },
+          {
+            "time_sec": 38.0,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "battle_stance"
+          },
+          {
+            "time_sec": 40.0,
+            "type": "text_overlay",
+            "overlay_id": "round_banner",
+            "data": { "text": "ROUND 2 – BEAM CLASH!" }
+          }
+        ]
+      },
+
+      {
+        "id": "round_2_beam_clash",
+        "label": "Round 2 – Beam Clash",
+        "start_sec": 45,
+        "end_sec": 90,
+        "type": "battle",
+        "camera": "medium",
+        "events": [
+          {
+            "time_sec": 45.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "charge_beam"
+          },
+          {
+            "time_sec": 45.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 45.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "KAMEHAMEHA!!!" }
+          },
+          {
+            "time_sec": 45.8,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "fire_beam"
+          },
+          {
+            "time_sec": 45.8,
+            "type": "effect",
+            "effect_id": "kamehameha",
+            "character": "goku",
+            "direction": "right"
+          },
+          {
+            "time_sec": 46.5,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "charge_beam"
+          },
+          {
+            "time_sec": 46.5,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "FINAL FLASH!!!" }
+          },
+          {
+            "time_sec": 47.7,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "fire_beam"
+          },
+          {
+            "time_sec": 47.7,
+            "type": "effect",
+            "effect_id": "final_flash",
+            "character": "vegeta",
+            "direction": "left"
+          },
+          {
+            "time_sec": 48.5,
+            "type": "beam_clash",
+            "beam_a": { "character": "goku",   "effect_id": "kamehameha" },
+            "beam_b": { "character": "vegeta", "effect_id": "final_flash" },
+            "clash_position": { "x": 960, "y": 540 },
+            "struggle_duration_sec": 8,
+            "winner": "goku"
+          },
+          {
+            "time_sec": 56.5,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 56.5,
+            "type": "camera_change",
+            "preset": "wide"
+          },
+          {
+            "time_sec": 58.0,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "knocked_back"
+          },
+          {
+            "time_sec": 58.0,
+            "type": "move",
+            "character": "vegeta",
+            "move": "fly_back",
+            "target_position": { "x": 1700, "y": 400 },
+            "duration_ms": 800
+          },
+          {
+            "time_sec": 60.0,
+            "type": "character_enter",
+            "character": "broly",
+            "enter_from": "top",
+            "enter_animation": "crash_land",
+            "target_position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 60.0,
+            "type": "effect",
+            "effect_id": "ground_crack",
+            "position": { "x": 960, "y": 590 }
+          },
+          {
+            "time_sec": 60.0,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 61.0,
+            "type": "text_overlay",
+            "overlay_id": "character_name_tag",
+            "data": { "character": "broly", "text": "BROLY\nLegendary Super Saiyan" }
+          },
+          {
+            "time_sec": 62.0,
+            "type": "pose",
+            "character": "broly",
+            "pose_id": "power_up"
+          },
+          {
+            "time_sec": 62.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "broly",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 65.0,
+            "type": "text_overlay",
+            "overlay_id": "round_banner",
+            "data": { "text": "GOKU + VEGETA VS BROLY!" }
+          },
+          {
+            "time_sec": 67.0,
+            "type": "combo_sequence",
+            "attacker": "goku",
+            "defender": "broly",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_right", "effect": "punch",  "hit_position": { "x": 1000, "y": 510 } },
+              { "delay_ms": 400, "pose": "kick_high",   "effect": "kick",   "hit_position": { "x": 1000, "y": 480 } }
+            ]
+          },
+          {
+            "time_sec": 68.0,
+            "type": "combo_sequence",
+            "attacker": "vegeta",
+            "defender": "broly",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_left",  "effect": "punch",  "hit_position": { "x": 1000, "y": 510 } },
+              { "delay_ms": 400, "pose": "kick_sweep",  "effect": "kick",   "hit_position": { "x": 1000, "y": 560 } }
+            ]
+          },
+          {
+            "time_sec": 70.0,
+            "type": "pose",
+            "character": "broly",
+            "pose_id": "power_up"
+          },
+          {
+            "time_sec": 70.5,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 72.0,
+            "type": "combo_sequence",
+            "attacker": "broly",
+            "defender": "goku",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_right", "effect": "punch",  "hit_position": { "x": 700, "y": 510 } },
+              { "delay_ms": 350, "pose": "punch_left",  "effect": "punch",  "hit_position": { "x": 700, "y": 520 } },
+              { "delay_ms": 700, "pose": "kick_high",   "effect": "kick",   "hit_position": { "x": 700, "y": 480 } },
+              { "delay_ms": 1050,"pose": "punch_right", "effect": "explosion_large", "hit_position": { "x": 700, "y": 510 } }
+            ]
+          },
+          {
+            "time_sec": 80.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "GALICK GUN!!!" }
+          },
+          {
+            "time_sec": 80.5,
+            "type": "effect",
+            "effect_id": "galick_gun",
+            "character": "vegeta",
+            "direction": "right"
+          },
+          {
+            "time_sec": 83.0,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 85.0,
+            "type": "text_overlay",
+            "overlay_id": "round_banner",
+            "data": { "text": "ROUND 3 – FINAL BATTLE!" }
+          }
+        ]
+      },
+
+      {
+        "id": "round_3_final_battle",
+        "label": "Round 3 – Final Battle (Goku vs Jiren)",
+        "start_sec": 90,
+        "end_sec": 180,
+        "type": "battle",
+        "camera": "medium",
+        "events": [
+          {
+            "time_sec": 90.0,
+            "type": "character_enter",
+            "character": "jiren",
+            "enter_from": "right",
+            "enter_animation": "power_walk",
+            "target_position": { "x": 1500, "y": 540 }
+          },
+          {
+            "time_sec": 90.5,
+            "type": "text_overlay",
+            "overlay_id": "character_name_tag",
+            "data": { "character": "jiren", "text": "JIREN\nFull Power" }
+          },
+          {
+            "time_sec": 91.0,
+            "type": "music",
+            "music_id": "battle_theme_2"
+          },
+          {
+            "time_sec": 92.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "power_up"
+          },
+          {
+            "time_sec": 92.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 94.0,
+            "type": "combo_sequence",
+            "attacker": "goku",
+            "defender": "jiren",
+            "combo": [
+              { "delay_ms": 0,    "pose": "punch_right", "effect": "punch",       "hit_position": { "x": 1200, "y": 510 } },
+              { "delay_ms": 300,  "pose": "kick_high",   "effect": "kick",        "hit_position": { "x": 1200, "y": 480 } },
+              { "delay_ms": 600,  "pose": "punch_left",  "effect": "clash_sparks","hit_position": { "x": 1200, "y": 520 } },
+              { "delay_ms": 900,  "pose": "kick_sweep",  "effect": "kick",        "hit_position": { "x": 1200, "y": 560 } },
+              { "delay_ms": 1200, "pose": "punch_right", "effect": "punch",       "hit_position": { "x": 1200, "y": 510 } },
+              { "delay_ms": 1500, "pose": "kick_high",   "effect": "explosion_large","hit_position": { "x": 1200, "y": 480 } }
+            ]
+          },
+          {
+            "time_sec": 97.0,
+            "type": "pose",
+            "character": "jiren",
+            "pose_id": "battle_stance"
+          },
+          {
+            "time_sec": 98.0,
+            "type": "combo_sequence",
+            "attacker": "jiren",
+            "defender": "goku",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_right", "effect": "punch",  "hit_position": { "x": 700, "y": 510 } },
+              { "delay_ms": 250, "pose": "punch_left",  "effect": "punch",  "hit_position": { "x": 700, "y": 520 } },
+              { "delay_ms": 500, "pose": "kick_high",   "effect": "kick",   "hit_position": { "x": 700, "y": 480 } },
+              { "delay_ms": 750, "pose": "punch_right", "effect": "punch",  "hit_position": { "x": 700, "y": 510 } },
+              { "delay_ms": 1000,"pose": "kick_sweep",  "effect": "kick",   "hit_position": { "x": 700, "y": 560 } }
+            ]
+          },
+          {
+            "time_sec": 101.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "dodge_back"
+          },
+          {
+            "time_sec": 101.0,
+            "type": "effect",
+            "effect_id": "ultra_instinct_dodge",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 102.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "MASTERED ULTRA INSTINCT!" }
+          },
+          {
+            "time_sec": 103.0,
+            "type": "camera_change",
+            "preset": "extreme_close",
+            "pan_to": { "x": 350, "y": 540 }
+          },
+          {
+            "time_sec": 104.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 105.0,
+            "type": "camera_change",
+            "preset": "medium",
+            "pan_to": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 106.0,
+            "type": "combo_sequence",
+            "attacker": "goku",
+            "defender": "jiren",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_right", "effect": "punch",       "hit_position": { "x": 1200, "y": 510 } },
+              { "delay_ms": 200, "pose": "punch_left",  "effect": "punch",       "hit_position": { "x": 1200, "y": 520 } },
+              { "delay_ms": 400, "pose": "kick_high",   "effect": "kick",        "hit_position": { "x": 1200, "y": 480 } },
+              { "delay_ms": 600, "pose": "punch_right", "effect": "clash_sparks","hit_position": { "x": 1200, "y": 510 } },
+              { "delay_ms": 800, "pose": "kick_sweep",  "effect": "kick",        "hit_position": { "x": 1200, "y": 560 } },
+              { "delay_ms": 1000,"pose": "punch_left",  "effect": "punch",       "hit_position": { "x": 1200, "y": 520 } },
+              { "delay_ms": 1200,"pose": "kick_high",   "effect": "punch",       "hit_position": { "x": 1200, "y": 480 } },
+              { "delay_ms": 1400,"pose": "punch_right", "effect": "explosion_large","hit_position": { "x": 1200, "y": 510 } }
+            ]
+          },
+          {
+            "time_sec": 115.0,
+            "type": "ki_blast_exchange",
+            "fighters": ["goku", "jiren"],
+            "blasts_per_fighter": 6,
+            "interval_ms": 300,
+            "blast_effect": "ki_blast"
+          },
+          {
+            "time_sec": 120.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "charge_beam"
+          },
+          {
+            "time_sec": 120.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "KAMEHAMEHA!!!" }
+          },
+          {
+            "time_sec": 120.8,
+            "type": "effect",
+            "effect_id": "kamehameha",
+            "character": "goku",
+            "direction": "right"
+          },
+          {
+            "time_sec": 123.0,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 1400, "y": 540 }
+          },
+          {
+            "time_sec": 125.0,
+            "type": "pose",
+            "character": "jiren",
+            "pose_id": "power_up"
+          },
+          {
+            "time_sec": 125.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "jiren",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 130.0,
+            "type": "combo_sequence",
+            "attacker": "jiren",
+            "defender": "goku",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_right", "effect": "punch",       "hit_position": { "x": 700, "y": 510 } },
+              { "delay_ms": 200, "pose": "punch_left",  "effect": "punch",       "hit_position": { "x": 700, "y": 520 } },
+              { "delay_ms": 400, "pose": "kick_high",   "effect": "kick",        "hit_position": { "x": 700, "y": 480 } },
+              { "delay_ms": 600, "pose": "punch_right", "effect": "punch",       "hit_position": { "x": 700, "y": 510 } },
+              { "delay_ms": 800, "pose": "kick_sweep",  "effect": "kick",        "hit_position": { "x": 700, "y": 560 } },
+              { "delay_ms": 1000,"pose": "punch_left",  "effect": "explosion_large","hit_position": { "x": 700, "y": 520 } }
+            ]
+          },
+          {
+            "time_sec": 140.0,
+            "type": "character_enter",
+            "character": "beerus",
+            "enter_from": "top",
+            "enter_animation": "float_down",
+            "target_position": { "x": 960, "y": 200 }
+          },
+          {
+            "time_sec": 140.5,
+            "type": "text_overlay",
+            "overlay_id": "character_name_tag",
+            "data": { "character": "beerus", "text": "BEERUS\nGod of Destruction" }
+          },
+          {
+            "time_sec": 142.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "HAKAI!!!" }
+          },
+          {
+            "time_sec": 142.5,
+            "type": "effect",
+            "effect_id": "hakai",
+            "position": { "x": 960, "y": 540 }
+          },
+          {
+            "time_sec": 145.0,
+            "type": "camera_change",
+            "preset": "wide"
+          },
+          {
+            "time_sec": 148.0,
+            "type": "combo_sequence",
+            "attacker": "goku",
+            "defender": "jiren",
+            "combo": [
+              { "delay_ms": 0,   "pose": "punch_right", "effect": "punch",  "hit_position": { "x": 1200, "y": 510 } },
+              { "delay_ms": 250, "pose": "kick_high",   "effect": "kick",   "hit_position": { "x": 1200, "y": 480 } },
+              { "delay_ms": 500, "pose": "punch_left",  "effect": "punch",  "hit_position": { "x": 1200, "y": 520 } },
+              { "delay_ms": 750, "pose": "kick_sweep",  "effect": "kick",   "hit_position": { "x": 1200, "y": 560 } },
+              { "delay_ms": 1000,"pose": "punch_right", "effect": "punch",  "hit_position": { "x": 1200, "y": 510 } },
+              { "delay_ms": 1250,"pose": "kick_high",   "effect": "punch",  "hit_position": { "x": 1200, "y": 480 } },
+              { "delay_ms": 1500,"pose": "punch_left",  "effect": "explosion_large","hit_position": { "x": 1200, "y": 520 } }
+            ]
+          },
+          {
+            "time_sec": 158.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "charge_beam"
+          },
+          {
+            "time_sec": 158.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "FINAL KAMEHAMEHA!!!" }
+          },
+          {
+            "time_sec": 159.5,
+            "type": "effect",
+            "effect_id": "kamehameha",
+            "character": "goku",
+            "direction": "right",
+            "scale_override": 2.0
+          },
+          {
+            "time_sec": 162.0,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 1400, "y": 540 },
+            "scale_override": 2.5
+          },
+          {
+            "time_sec": 165.0,
+            "type": "pose",
+            "character": "jiren",
+            "pose_id": "knocked_back"
+          },
+          {
+            "time_sec": 165.0,
+            "type": "move",
+            "character": "jiren",
+            "move": "fly_back",
+            "target_position": { "x": 1800, "y": 600 },
+            "duration_ms": 1000
+          },
+          {
+            "time_sec": 168.0,
+            "type": "text_overlay",
+            "overlay_id": "round_banner",
+            "data": { "text": "GOKU WINS!!!" }
+          },
+          {
+            "time_sec": 170.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "victory_pose"
+          },
+          {
+            "time_sec": 170.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 172.0,
+            "type": "music",
+            "music_id": "victory_theme"
+          }
+        ]
+      },
+
+      {
+        "id": "victory_celebration",
+        "label": "Victory Celebration",
+        "start_sec": 180,
+        "end_sec": 210,
+        "type": "celebration",
+        "camera": "medium",
+        "events": [
+          {
+            "time_sec": 180.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "victory_pose"
+          },
+          {
+            "time_sec": 180.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 181.0,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "battle_stance"
+          },
+          {
+            "time_sec": 182.0,
+            "type": "text_overlay",
+            "overlay_id": "title_card",
+            "data": { "text": "GOKU", "sub_text": "THE STRONGEST IN THE UNIVERSE" }
+          },
+          {
+            "time_sec": 185.0,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 960, "y": 300 }
+          },
+          {
+            "time_sec": 186.0,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 400, "y": 400 }
+          },
+          {
+            "time_sec": 186.5,
+            "type": "effect",
+            "effect_id": "explosion_large",
+            "position": { "x": 1500, "y": 400 }
+          },
+          {
+            "time_sec": 188.0,
+            "type": "camera_change",
+            "preset": "wide"
+          },
+          {
+            "time_sec": 190.0,
+            "type": "all_characters_pose",
+            "pose_id": "victory_pose",
+            "characters": ["goku", "vegeta", "gohan"]
+          },
+          {
+            "time_sec": 195.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "POWER LEVEL: OVER 9000!!!" }
+          },
+          {
+            "time_sec": 200.0,
+            "type": "camera_change",
+            "preset": "cinematic"
+          },
+          {
+            "time_sec": 205.0,
+            "type": "music",
+            "music_id": "outro_theme"
+          }
+        ]
+      },
+
+      {
+        "id": "outro",
+        "label": "OUTRO – Subscribe CTA",
+        "start_sec": 210,
+        "end_sec": 240,
+        "type": "outro",
+        "background_color": "#FFFFFF",
+        "camera": "wide",
+        "events": [
+          {
+            "time_sec": 210.0,
+            "type": "fade_transition",
+            "from_color": "#FFFFFF",
+            "to_color": "#FFFFFF",
+            "duration_ms": 1000
+          },
+          {
+            "time_sec": 211.0,
+            "type": "text_overlay",
+            "overlay_id": "outro_cta",
+            "data": {}
+          },
+          {
+            "time_sec": 212.0,
+            "type": "character_enter",
+            "character": "goku",
+            "enter_from": "left",
+            "enter_animation": "walk_in",
+            "target_position": { "x": 300, "y": 700 }
+          },
+          {
+            "time_sec": 212.5,
+            "type": "character_enter",
+            "character": "vegeta",
+            "enter_from": "right",
+            "enter_animation": "walk_in",
+            "target_position": { "x": 1620, "y": 700 }
+          },
+          {
+            "time_sec": 213.0,
+            "type": "pose",
+            "character": "goku",
+            "pose_id": "victory_pose"
+          },
+          {
+            "time_sec": 213.0,
+            "type": "pose",
+            "character": "vegeta",
+            "pose_id": "victory_pose"
+          },
+          {
+            "time_sec": 215.0,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "goku",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 215.5,
+            "type": "effect",
+            "effect_id": "aura_flare",
+            "character": "vegeta",
+            "position": "on_character"
+          },
+          {
+            "time_sec": 220.0,
+            "type": "text_overlay",
+            "overlay_id": "move_name",
+            "data": { "text": "Next Episode Coming Soon!" }
+          },
+          {
+            "time_sec": 225.0,
+            "type": "color_legend_display",
+            "display": true,
+            "position": { "x": 960, "y": 850 },
+            "align": "center"
+          },
+          {
+            "time_sec": 235.0,
+            "type": "fade_out",
+            "duration_ms": 3000,
+            "to_color": "#FFFFFF"
+          }
+        ]
+      }
+    ]
+  },
+
+  "rendering_hints": {
+    "interpolation": "cubic_bezier",
+    "anti_alias": true,
+    "motion_blur": { "enabled": true, "samples": 4, "shutter_angle": 180 },
+    "glow_post_process": { "enabled": true, "radius": 8, "intensity": 0.6 },
+    "particle_system": {
+      "max_particles": 500,
+      "gravity": 0.3,
+      "wind": 0.0
+    },
+    "stickman_render": {
+      "line_cap": "round",
+      "line_join": "round",
+      "shadow": { "enabled": false },
+      "outline": { "enabled": false }
+    },
+    "export": {
+      "format": "MP4",
+      "codec": "H.264",
+      "bitrate_kbps": 8000,
+      "audio_codec": "AAC",
+      "audio_bitrate_kbps": 192
+    }
+  },
+
+  "quick_reference": {
+    "how_to_use": [
+      "1. Load this JSON into your animation engine (e.g., custom canvas renderer, Rive, or a Node.js canvas script).",
+      "2. Iterate over timeline.segments in order.",
+      "3. For each event in a segment, dispatch the event at event.time_sec.",
+      "4. Use characters[id] to look up stickman geometry and colors.",
+      "5. Use effects_library[id] to render battle effects at the given position.",
+      "6. Use animation_poses[id].keyframes to interpolate stickman joint angles.",
+      "7. Apply camera presets from camera.presets for zoom/pan.",
+      "8. Render text_overlays using text_overlays[id] styles.",
+      "9. Trigger music_cues at their start_sec timestamps.",
+      "10. Export at 1920x1080 @ 60fps for best quality."
+    ],
+    "color_codes": {
+      "goku":   "#1E90FF  (Dodger Blue  – Ultra Instinct)",
+      "vegeta": "#8B0000  (Dark Red     – Ultra Ego)",
+      "gohan":  "#800080  (Purple       – Beast Form)",
+      "broly":  "#006400  (Dark Green   – Legendary SS)",
+      "jiren":  "#FF4500  (Orange-Red   – Full Power)",
+      "beerus": "#9400D3  (Violet       – God of Destruction)"
+    },
+    "total_events": 120,
+    "battle_rounds": 3,
+    "characters_featured": ["goku", "vegeta", "gohan", "broly", "jiren", "beerus"],
+    "signature_moves_featured": [
+      "Kamehameha", "Final Flash", "Galick Gun", "Hakai",
+      "Ultra Instinct Dodge", "Mastered Ultra Instinct",
+      "Legendary Super Saiyan Power-Up", "Beam Clash"
+    ]
+  }
+}
