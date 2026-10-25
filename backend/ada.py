@@ -22,6 +22,7 @@ if sys.version_info < (3, 11, 0):
     asyncio.ExceptionGroup = exceptiongroup.ExceptionGroup
 
 from tools import tools_list
+import mobile_behavior
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -29,7 +30,7 @@ SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE = 1024
 
-MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
+MODEL = "models/gemini-3.8-live"
 DEFAULT_MODE = "camera"
 
 load_dotenv()
@@ -235,17 +236,20 @@ social_media_tool = {
     "behavior": "NON_BLOCKING"
 }
 
-tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool, list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, generate_video_tool, create_digital_product_tool, social_media_tool, list_account_connections_tool] + tools_list[0]['function_declarations'][1:]}]
+_BASE_DECLARATIONS = [
+    generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool,
+    list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool,
+    get_print_status_tool, iterate_cad_tool, generate_video_tool, create_digital_product_tool,
+    social_media_tool, list_account_connections_tool,
+] + tools_list[0]['function_declarations'][1:] + mobile_behavior.tool_declarations()
+
+tools = [{'google_search': {}}, {"function_declarations": _BASE_DECLARATIONS}]
+
+# Called by the server when a mobile tool (Sweety, memory, screen, Kasa) runs.
+mobile_tool_handler = None
 
 # --- Default personality (can be overridden via settings.json) ---
-DEFAULT_PERSONALITY = (
-    "Your name is ADA, Advanced Design Assistant version 3.1. "
-    "You are a witty, charming, and immensely capable AI assistant. "
-    "Your owner is Jeffrey Llamas (jeff). You address him as 'Sir'. "
-    "You have full access to all your capabilities and tools to assist Jeffrey. "
-    "When answering, respond with confidence, personality, and dynamic engagement. "
-    "When Jeffrey asks which accounts are connected, call list_account_connections and answer with that result."
-)
+DEFAULT_PERSONALITY = mobile_behavior.desktop_personality()
 
 def _load_personality():
     """Load ADA personality from settings.json, falling back to default."""
@@ -269,18 +273,57 @@ def _load_personality():
     return DEFAULT_PERSONALITY
 
 # --- CONFIG: Enabled Transcription ---
+def _live_preferences():
+    """Voice, model, and search from settings.json. Missing values use the mobile defaults."""
+    voice = "Kore"
+    live_model = mobile_behavior.LIVE_DEFAULT
+    include_search = True
+    for candidate in [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json"),
+        "settings.json",
+    ]:
+        if not os.path.exists(candidate):
+            continue
+        try:
+            import json
+            with open(candidate, "r", encoding="utf-8") as handle:
+                saved = json.load(handle)
+        except Exception:
+            continue
+        voice = saved.get("voice_name") or voice
+        live_model = mobile_behavior.migrate_live_model(saved.get("live_model") or live_model)
+        if "google_search" in saved:
+            include_search = bool(saved["google_search"])
+        break
+    if voice not in mobile_behavior.VOICES:
+        voice = "Kore"
+    return voice, live_model, include_search
+
+
 def build_config():
     """Build LiveConnectConfig with current personality from settings."""
+    voice, live_model, include_search = _live_preferences()
+    declarations = mobile_behavior.with_blocking(_BASE_DECLARATIONS, live_model)
+    live_tools = []
+    if include_search:
+        live_tools.append({"google_search": {}})
+    live_tools.append({"function_declarations": declarations})
+    notes = ""
+    if mobile_tool_handler and getattr(mobile_tool_handler, "memory_block", None):
+        notes = mobile_tool_handler.memory_block() or ""
+    instruction = _load_personality()
+    if notes:
+        instruction = f"{instruction}\n\n{notes}"
     base_kwargs = {
         "response_modalities": ["AUDIO"],
         "output_audio_transcription": {},
         "input_audio_transcription": {},
-        "system_instruction": _load_personality(),
-        "tools": tools,
+        "system_instruction": instruction,
+        "tools": live_tools,
         "speech_config": types.SpeechConfig(
             voice_config=types.VoiceConfig(
                 prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                    voice_name="Kore"
+                    voice_name=voice
                 )
             )
         ),
@@ -434,9 +477,11 @@ except ImportError:
             }
 
 class AudioLoop:
-    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None):
+    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, on_playback_level=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None):
         self.video_mode = video_mode
         self.on_audio_data = on_audio_data
+        self.on_playback_level = on_playback_level
+        self._last_playback_level = None
         self.on_video_frame = on_video_frame
         self.on_cad_data = on_cad_data
         self.on_web_data = on_web_data
@@ -454,6 +499,8 @@ class AudioLoop:
         self.audio_in_queue = None
         self.out_queue = None
         self.paused = False
+        self.drop_output_audio = False
+        self.audible_until = 0.0
 
         self.chat_buffer = {"sender": None, "text": ""} # For aggregating chunks
         
@@ -644,7 +691,9 @@ class AudioLoop:
             try:
                 data = await asyncio.to_thread(self.audio_stream.read, CHUNK_SIZE, **kwargs)
                 
-                # 1. Send Audio
+                # 1. Send Audio (held while her own voice is still in the room)
+                if time.time() < self.audible_until:
+                    continue
                 if self.out_queue:
                     await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
                 
@@ -885,7 +934,8 @@ class AudioLoop:
                 async for response in turn:
                     # 1. Handle Audio Data
                     if data := response.data:
-                        self.audio_in_queue.put_nowait(data)
+                        if not self.drop_output_audio:
+                            self.audio_in_queue.put_nowait(data)
                         # NOTE: 'continue' removed here to allow processing transcription/tools in same packet
 
                     # 2. Handle Transcription (User & Model)
@@ -958,7 +1008,13 @@ class AudioLoop:
                         print("The tool was called")
                         function_responses = []
                         for fc in response.tool_call.function_calls:
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "generate_video", "create_digital_product", "social_media_post", "list_account_connections"]:
+                            if fc.name in {
+                                "generate_cad", "run_web_agent", "write_file", "read_directory", "read_file",
+                                "create_project", "switch_project", "list_projects", "list_smart_devices",
+                                "control_light", "discover_printers", "print_stl", "get_print_status",
+                                "iterate_cad", "generate_video", "create_digital_product", "social_media_post",
+                                "list_account_connections", *mobile_behavior.MOBILE_TOOL_NAMES,
+                            }:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Check Permissions: True = requires confirmation, False = auto-allow
@@ -1007,6 +1063,24 @@ class AudioLoop:
                                         continue
 
                                 # If confirmed (or no callback configured, or auto-allowed), proceed
+                                if fc.name in mobile_behavior.MOBILE_TOOL_NAMES:
+                                    result_text = "That tool is not available."
+                                    if mobile_tool_handler:
+                                        try:
+                                            maybe = mobile_tool_handler(fc.name, dict(fc.args or {}))
+                                            if asyncio.iscoroutine(maybe):
+                                                result_text = await maybe
+                                            else:
+                                                result_text = maybe
+                                        except Exception as exc:
+                                            result_text = str(exc)
+                                    function_responses.append(types.FunctionResponse(
+                                        id=fc.id,
+                                        name=fc.name,
+                                        response={"result": result_text or ""},
+                                    ))
+                                    continue
+
                                 if fc.name == "generate_cad":
                                     print(f"\n[ADA DEBUG] --------------------------------------------------")
                                     print(f"[ADA DEBUG] [TOOL] Tool Call Detected: 'generate_cad'")
@@ -1354,6 +1428,7 @@ class AudioLoop:
                             await self.session.send_tool_response(function_responses=function_responses)
                 
                 # Turn/Response Loop Finished
+                self.drop_output_audio = False
                 self.flush_chat()
 
                 while not self.audio_in_queue.empty():
@@ -1364,6 +1439,20 @@ class AudioLoop:
             # CRITICAL: Re-raise to crash the TaskGroup and trigger outer loop reconnect
             raise e
 
+    def interrupt_speech(self):
+        """Drop the current utterance so a barge-in does not talk over the next turn."""
+        self.drop_output_audio = True
+        self.audible_until = 0.0
+        self._publish_playback_level(b"")
+        queue = self.audio_in_queue
+        if not queue:
+            return
+        while True:
+            try:
+                queue.get_nowait()
+            except Exception:
+                break
+
     async def play_audio(self):
         stream = await asyncio.to_thread(
             pya.open,
@@ -1373,11 +1462,41 @@ class AudioLoop:
             output=True,
             output_device_index=self.output_device_index,
         )
+        buffer = mobile_behavior.PcmUtteranceBuffer()
         while True:
-            bytestream = await self.audio_in_queue.get()
-            if self.on_audio_data:
-                self.on_audio_data(bytestream)
-            await asyncio.to_thread(stream.write, bytestream)
+            try:
+                bytestream = await asyncio.wait_for(self.audio_in_queue.get(), timeout=0.12)
+            except asyncio.TimeoutError:
+                pending = buffer.stall()
+                if pending and not self.drop_output_audio:
+                    await self._write_playback(stream, pending)
+                else:
+                    self._publish_playback_level(b"")
+                continue
+            if self.drop_output_audio:
+                buffer.pending.clear()
+                buffer.primed = False
+                self._publish_playback_level(b"")
+                continue
+            chunk = buffer.push(bytestream)
+            if chunk:
+                await self._write_playback(stream, chunk)
+
+    def _publish_playback_level(self, pcm):
+        level = mobile_behavior.quantize_playback_level(pcm)
+        if level == self._last_playback_level:
+            return
+        self._last_playback_level = level
+        if self.on_playback_level:
+            self.on_playback_level(level)
+
+    async def _write_playback(self, stream, bytestream):
+        self._publish_playback_level(bytestream)
+        if self.on_audio_data:
+            self.on_audio_data(bytestream)
+        duration = len(bytestream) / float(RECEIVE_SAMPLE_RATE * 2)
+        self.audible_until = time.time() + duration + 0.28
+        await asyncio.to_thread(stream.write, bytestream)
 
     async def get_frames(self):
         cap = await asyncio.to_thread(cv2.VideoCapture, 0, cv2.CAP_AVFOUNDATION)
@@ -1418,8 +1537,13 @@ class AudioLoop:
         while not self.stop_event.is_set():
             try:
                 print(f"[ADA DEBUG] [CONNECT] Connecting to Gemini Live API...")
+                _voice, live_model, _search = _live_preferences()
+                live_model = getattr(self, "_model_override", None) or live_model
+                model_name = mobile_behavior.models_resource(live_model)
+                print(f"[ADA DEBUG] [CONNECT] Live model {model_name}")
+                session_cm = client.aio.live.connect(model=model_name, config=build_config())
                 async with (
-                    client.aio.live.connect(model=MODEL, config=config) as session,
+                    session_cm as session,
                     asyncio.TaskGroup() as tg,
                 ):
                     self.session = session
@@ -1492,6 +1616,17 @@ class AudioLoop:
                 
                 if self.stop_event.is_set():
                     break
+
+                message = str(e)
+                if mobile_behavior.is_unsupported_model(message):
+                    _voice, preferred, _search = _live_preferences()
+                    current = getattr(self, "_model_override", None) or preferred
+                    fallback = mobile_behavior.next_model(current, mobile_behavior.LIVE_CANDIDATES)
+                    if fallback and fallback != current:
+                        self._model_override = fallback
+                        print(f"[ADA DEBUG] [CONNECT] {current} was rejected. Trying {fallback}.")
+                        retry_delay = 1
+                        continue
                 
                 print(f"[ADA DEBUG] [RETRY] Reconnecting in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)

@@ -31,6 +31,19 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import ada
 from authenticator import FaceAuthenticator
 from kasa_agent import KasaAgent
+from token_store import TokenStore
+from gemini_key_store import GeminiKeyStore
+from studio_service import (
+    FilmJob,
+    FilmLibrary,
+    MemoryBook,
+    dispatch_local_tool,
+    form_from_request,
+    sweety_reply_fallback,
+    warning_for,
+)
+import mobile_behavior
+from fastapi.responses import FileResponse
 
 # Create a Socket.IO server
 import re
@@ -109,6 +122,11 @@ DEFAULT_SETTINGS = {
     "camera_flipped": False, # Invert cursor horizontal direction
     # Same string ADA speaks with. A local settings.json can still override it.
     "ada_personality": ada.DEFAULT_PERSONALITY,
+    "voice_name": "Kore",
+    "live_model": "gemini-3.8-live",
+    "text_model": "gemini-3.8-flash",
+    "google_search": True,
+    "assistant_look": "sweety",
 }
 
 SETTINGS = DEFAULT_SETTINGS.copy()
@@ -143,6 +161,152 @@ load_settings()
 
 authenticator = None
 kasa_agent = KasaAgent(known_devices=SETTINGS.get("kasa_devices"))
+MAIN_LOOP = None
+
+
+def _env_gemini_keys():
+    keys = []
+    primary = os.getenv("GEMINI_API_KEY", "").strip()
+    if primary and primary != "DUMMY_KEY":
+        keys.append(primary)
+    for part in os.getenv("GEMINI_API_KEY_FALLBACKS", "").split(","):
+        if part.strip():
+            keys.append(part.strip())
+    return keys
+
+
+_token_store = TokenStore()
+gemini_keys = GeminiKeyStore(_token_store, env_keys=_env_gemini_keys())
+memory_book = MemoryBook(_token_store)
+film_library = FilmLibrary()
+film_job = FilmJob(gemini_keys, film_library)
+
+
+def emit_from_thread(event, payload):
+    loop = MAIN_LOOP
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(sio.emit(event, payload), loop)
+
+
+film_job.listeners.append(lambda snapshot: emit_from_thread("film_status", snapshot))
+
+
+def _apply_active_gemini_key():
+    entries = gemini_keys._rotator._entries
+    if not entries:
+        return
+    key = entries[0]["key"]
+    os.environ["GEMINI_API_KEY"] = key
+    ada.client = ada.genai.Client(http_options={"api_version": "v1beta"}, api_key=key)
+
+
+_apply_active_gemini_key()
+
+
+def _schedule_notice(delay, message):
+    async def _fire():
+        await asyncio.sleep(max(0, delay))
+        await sio.emit("status", {"msg": message})
+        await sio.emit("transcription", {"sender": "System", "text": message})
+
+    loop = MAIN_LOOP
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_fire(), loop)
+
+
+async def handle_mobile_tool(name, args):
+    local = dispatch_local_tool(name, args, memory_book, _schedule_notice)
+    if local is not None:
+        if name in {"look_at_screen", "share_screen", "see_screen"}:
+            await sio.emit("screen_share_request", {"tool": name})
+        if name in {"save_memory", "delete_memory"}:
+            await sio.emit("memories", memory_book.list_notes())
+        return local
+    if name == "list_kasa_devices":
+        devices = await kasa_agent.discover_devices()
+        await sio.emit("kasa_devices", devices)
+        return f"Found {len(devices)} Kasa devices."
+    if name == "set_kasa_power":
+        target = (args or {}).get("target") or ""
+        power = str((args or {}).get("power") or "").lower()
+        action = "on" if power in {"on", "true", "1"} else "off"
+        device = kasa_agent._resolve_device(target) if hasattr(kasa_agent, "_resolve_device") else None
+        ip = getattr(device, "host", None) or target
+        success = await (kasa_agent.turn_on(ip) if action == "on" else kasa_agent.turn_off(ip))
+        await sio.emit("kasa_update", {"ip": ip, "is_on": action == "on"})
+        return "The device is on, Sir." if success and action == "on" else "The device is off, Sir." if success else f"Could not reach {target}."
+    if name == "generate_finished_video":
+        form = form_from_request((args or {}).get("request") or "")
+        result = film_job.start_form(form)
+        await sio.emit("open_content", {"form": form, "line": result.get("line") or result.get("message"), "warning": warning_for(form["minutes"])})
+        return result.get("line") or result.get("message")
+    if name == "generate_scene_video":
+        prompt = ((args or {}).get("prompt") or "").strip()
+        if len(prompt) < 12:
+            return "Describe the scene in a sentence, Sir."
+        form = {
+            "niche": "Storytelling",
+            "style": "Cinematic",
+            "aspect": (args or {}).get("aspect") or "9:16",
+            "narrator": "Storyteller",
+            "minutes": 1,
+            "topic": prompt,
+            "max_scenes": 1,
+            "crossfade": False,
+            "captions": False,
+            "voiceover": False,
+        }
+        result = film_job.start_form(form)
+        await sio.emit("open_scene", {"prompt": prompt, "line": result.get("line") or result.get("message")})
+        return result.get("line") or result.get("message")
+    if name == "ask_sweety":
+        message = (args or {}).get("message") or ""
+        reply = await asyncio.to_thread(_sweety_text, message)
+        make = "[[MAKE_IT]]" in reply or mobile_behavior.wants_make_it(message)
+        clean = reply.replace("[[MAKE_IT]]", "").strip()
+        await sio.emit("sweety_line", {"role": "Sweety", "text": clean, "make": make})
+        if make:
+            form = form_from_request(message)
+            form["max_scenes"] = 3
+            result = film_job.start_form(form)
+            return result.get("line") or clean
+        return clean
+    return "Done."
+
+
+def handle_mobile_tool_memory():
+    return memory_book.prompt_block()
+
+
+handle_mobile_tool.memory_block = handle_mobile_tool_memory
+ada.mobile_tool_handler = handle_mobile_tool
+
+
+def _sweety_text(message):
+    if not (message or "").strip():
+        return "Say something to Sweety first."
+    try:
+        acquired = gemini_keys.acquire()
+    except RuntimeError:
+        return sweety_reply_fallback(message)
+    from omni_film import _post_json
+    from provider_http import http_request
+    model = mobile_behavior.migrate_text_model(SETTINGS.get("text_model"))
+    result = _post_json(
+        http_request,
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        acquired["key"],
+        {"contents": [{"role": "user", "parts": [{"text": mobile_behavior.sweety_prompt() + "\n\n" + message}]}]},
+        60,
+    )
+    if result.status >= 400:
+        if result.status in {401, 403, 429, 500, 502, 503, 504}:
+            gemini_keys.cool(acquired["slot"])
+        return sweety_reply_fallback(message)
+    data = result.json()
+    parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+    text = "".join(part.get("text") or "" for part in parts).strip()
+    return text or sweety_reply_fallback(message)
 # tool_permissions is now SETTINGS["tool_permissions"]
 
 
@@ -260,6 +424,8 @@ async def _run_startup_initialization():
 
 @asynccontextmanager
 async def lifespan(_app):
+    global MAIN_LOOP
+    MAIN_LOOP = asyncio.get_running_loop()
     await _run_startup_initialization()
     yield
 
@@ -289,6 +455,16 @@ async def status():
     return {"status": "running", "service": "A.D.A Backend"}
 
 
+@app.get("/media/ada/{name}")
+async def media_ada(name: str):
+    safe_name = Path(name).name
+    root = film_library.directory.resolve()
+    path = (root / safe_name).resolve()
+    if path.parent != root or not path.is_file():
+        return HTMLResponse("missing", status_code=404)
+    return FileResponse(path)
+
+
 @app.get("/oauth/{provider}/callback", response_class=HTMLResponse)
 async def oauth_callback(provider: str, request: Request):
     # The authorization code in the query is a secret. Do not log request.url.
@@ -313,6 +489,8 @@ async def connect(sid, environ):
     await _maybe_refresh_startup_checks(force=False)
     await sio.emit('status', {'msg': 'Connected to A.D.A Backend'}, room=sid)
     await sio.emit('startup_checks', STARTUP_CHECKS, room=sid)
+    await sio.emit('gemini_keys', gemini_keys.public_view(), room=sid)
+    await sio.emit('memories', memory_book.list_notes(), room=sid)
 
     global authenticator
     
@@ -419,6 +597,9 @@ async def _start_audio_loop(data=None):
         print(f"Sending Error to frontend: {msg}")
         asyncio.create_task(sio.emit('error', {'msg': msg}))
 
+    def on_playback_level(level):
+        asyncio.create_task(sio.emit('playback_level', {'level': level}))
+
     print(f"Initializing AudioLoop with device_index={device_index}")
     audio_loop = ada.AudioLoop(
         video_mode="none",
@@ -432,6 +613,7 @@ async def _start_audio_loop(data=None):
         on_project_update=on_project_update,
         on_device_update=on_device_update,
         on_error=on_error,
+        on_playback_level=on_playback_level,
         input_device_index=device_index,
         input_device_name=device_name,
         kasa_agent=kasa_agent
@@ -1360,6 +1542,22 @@ async def update_settings(sid, data):
         SETTINGS["camera_flipped"] = data["camera_flipped"]
         print(f"[SERVER] Camera flip set to: {data['camera_flipped']}")
 
+    if data.get("ada_personality") == "__reset__":
+        SETTINGS["ada_personality"] = ada.DEFAULT_PERSONALITY
+    elif "ada_personality" in data:
+        SETTINGS["ada_personality"] = str(data.get("ada_personality") or "")
+
+    if "voice_name" in data and data["voice_name"] in mobile_behavior.VOICES:
+        SETTINGS["voice_name"] = data["voice_name"]
+    if "live_model" in data:
+        SETTINGS["live_model"] = mobile_behavior.migrate_live_model(data.get("live_model"))
+    if "text_model" in data:
+        SETTINGS["text_model"] = mobile_behavior.migrate_text_model(data.get("text_model"))
+    if "google_search" in data:
+        SETTINGS["google_search"] = bool(data.get("google_search"))
+    if "assistant_look" in data:
+        SETTINGS["assistant_look"] = mobile_behavior.normalize_assistant_look(data.get("assistant_look"))
+
     save_settings()
     # Broadcast new full settings
     await sio.emit('settings', SETTINGS)
@@ -1380,6 +1578,143 @@ async def update_tool_permissions(sid, data):
         audio_loop.update_permissions(SETTINGS["tool_permissions"])
     # Broadcast update to all
     await sio.emit('tool_permissions', SETTINGS["tool_permissions"])
+
+
+@sio.event
+async def interrupt_audio(sid):
+    if audio_loop:
+        audio_loop.interrupt_speech()
+        await sio.emit('status', {'msg': 'Interrupted'})
+
+
+@sio.event
+async def get_gemini_keys(sid):
+    await sio.emit('gemini_keys', gemini_keys.public_view())
+
+
+@sio.event
+async def add_gemini_key(sid, data):
+    message = gemini_keys.add((data or {}).get("key"))
+    view = gemini_keys.public_view()
+    if message:
+        view = {**view, "error": message}
+    else:
+        _apply_active_gemini_key()
+    await sio.emit('gemini_keys', view)
+
+
+@sio.event
+async def delete_gemini_key(sid, data):
+    gemini_keys.delete_slot((data or {}).get("slot"))
+    _apply_active_gemini_key()
+    await sio.emit('gemini_keys', gemini_keys.public_view())
+
+
+@sio.event
+async def get_memories(sid):
+    await sio.emit('memories', memory_book.list_notes())
+
+
+@sio.event
+async def delete_memory_note(sid, data):
+    memory_book.delete(note_id=(data or {}).get("id"), title=(data or {}).get("title"))
+    await sio.emit('memories', memory_book.list_notes())
+
+
+@sio.event
+async def sweety_say(sid, data):
+    text = ((data or {}).get("text") or "").strip()
+    if not text:
+        await sio.emit('sweety_line', {'role': 'Sweety', 'text': 'Say something to Sweety first.'})
+        return
+    reply = await asyncio.to_thread(_sweety_text, text)
+    make = '[[MAKE_IT]]' in reply
+    clean = reply.replace('[[MAKE_IT]]', '').strip()
+    await sio.emit('sweety_line', {'role': 'Sweety', 'text': clean, 'make': make})
+    if (data or {}).get('make') or make:
+        form = form_from_request(text)
+        form['max_scenes'] = min(5, mobile_behavior.scene_count_for_minutes(form['minutes']))
+        if form['minutes'] == 1 and 'minute' not in text.lower():
+            form['max_scenes'] = 3
+        result = film_job.start_form(form)
+        await sio.emit('film_status', film_job.snapshot())
+        await sio.emit('transcription', {'sender': 'System', 'text': result.get('line') or result.get('message') or clean})
+
+
+@sio.event
+async def write_script(sid, data):
+    payload = data or {}
+    script = mobile_behavior.draft_script(
+        payload.get('topic'),
+        payload.get('niche') or 'tech',
+        payload.get('tone') or 'witty',
+        payload.get('style') or 'cinematic',
+        payload.get('length') or 60,
+    )
+    await sio.emit('script_draft', {'text': script})
+
+
+@sio.event
+async def render_scene(sid, data):
+    prompt = ((data or {}).get('prompt') or '').strip()
+    if len(prompt) < 12:
+        await sio.emit('scene_status', {'error': 'Describe the scene in a sentence, Sir.'})
+        return
+    aspect = (data or {}).get('aspect') or '9:16'
+    form = {
+        'niche': 'Storytelling',
+        'style': 'Cinematic',
+        'aspect': aspect,
+        'narrator': 'Storyteller',
+        'minutes': 1,
+        'topic': prompt,
+        'max_scenes': 1,
+        'crossfade': False,
+        'captions': False,
+        'voiceover': False,
+    }
+    result = film_job.start_form(form)
+    await sio.emit('scene_status', {'line': result.get('line') or result.get('message'), 'ok': result.get('ok', False)})
+    await sio.emit('film_status', film_job.snapshot())
+
+
+@sio.event
+async def start_film(sid, data):
+    payload = data or {}
+    form = {
+        'niche': payload.get('niche') or 'Storytelling',
+        'custom_niche': (payload.get('customNiche') or '')[:40],
+        'narrator': payload.get('narrator') or 'Storyteller',
+        'style': payload.get('style') or 'Cinematic',
+        'aspect': payload.get('aspect') or '9:16 Shorts',
+        'minutes': payload.get('minutes') or 1,
+        'topic': (payload.get('topic') or '')[:500],
+        'crossfade': payload.get('crossfade', True),
+        'captions': payload.get('captions', True),
+        'voiceover': payload.get('voiceover', True),
+        'keep_clip_audio': payload.get('keepClipAudio', False),
+    }
+    result = film_job.start_form(form)
+    line = result.get('line') or result.get('message')
+    await sio.emit('transcription', {'sender': 'System', 'text': line})
+    await sio.emit('film_status', film_job.snapshot())
+
+
+@sio.event
+async def cancel_film(sid):
+    await sio.emit('film_status', film_job.cancel())
+
+
+@sio.event
+async def get_films(sid):
+    await sio.emit('film_status', film_job.snapshot())
+
+
+@sio.event
+async def delete_film(sid, data):
+    film_library.delete((data or {}).get('id'))
+    await sio.emit('film_status', film_job.snapshot())
+
 
 if __name__ == "__main__":
     # Desktop Electron expects 127.0.0.1:8000. LAN mode sets ADA_HOST=0.0.0.0.

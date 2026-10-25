@@ -90,6 +90,7 @@ const SettingsWindow = ({
     setIsCameraFlipped,
     handleFileUpload,
     mobileLayout = false,
+    embedded = false,
     onClose
 }) => {
     const [permissions, setPermissions] = useState({});
@@ -247,15 +248,19 @@ const SettingsWindow = ({
     };
 
     return (
-        <div className={`${mobileLayout ? 'fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+6rem)] bottom-3 w-auto overflow-hidden' : 'absolute top-16 right-6 w-[30rem]'} bg-black/90 border border-cyan-500/50 p-4 rounded-lg z-50 backdrop-blur-xl shadow-[0_0_30px_rgba(6,182,212,0.2)]`}>
+        <div className={embedded
+            ? 'w-full text-[#E6FBFF]'
+            : `${mobileLayout ? 'fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+6rem)] bottom-3 w-auto overflow-hidden' : 'absolute top-16 right-6 w-[30rem]'} bg-black/90 border border-cyan-500/50 p-4 rounded-lg z-50 backdrop-blur-xl shadow-[0_0_30px_rgba(6,182,212,0.2)]`}>
+            {!embedded && (
             <div className="flex justify-between items-center mb-4 border-b border-cyan-900/50 pb-2">
                 <h2 className="text-cyan-400 font-bold text-sm uppercase tracking-wider">Settings</h2>
                 <button onClick={onClose} className="text-cyan-600 hover:text-cyan-400">
                     <X size={16} />
                 </button>
             </div>
+            )}
 
-            <div className="max-h-[calc(100vh-8rem)] overflow-y-auto pr-1">
+            <div className={embedded ? '' : 'max-h-[calc(100vh-8rem)] overflow-y-auto pr-1'}>
 
             {/* Connections */}
             <div className="mb-6">

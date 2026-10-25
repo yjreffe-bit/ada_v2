@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState, useRef } from 'react';
 import io from 'socket.io-client';
+import MobileShell from './shell/MobileShell';
 
 import Visualizer from './components/Visualizer';
 import TopAudioBar from './components/TopAudioBar';
@@ -14,7 +15,6 @@ const ConfirmationPopup = lazy(() => import('./components/ConfirmationPopup'));
 const AuthLock = lazy(() => import('./components/AuthLock'));
 const KasaWindow = lazy(() => import('./components/KasaWindow'));
 const PrinterWindow = lazy(() => import('./components/PrinterWindow'));
-const SettingsWindow = lazy(() => import('./components/SettingsWindow'));
 
 
 
@@ -1401,13 +1401,15 @@ function App() {
         }
     };
 
-    const handleSend = (e) => {
-        if (e.key === 'Enter' && inputValue.trim()) {
-            socket.emit('user_input', { text: inputValue });
-            addMessage('You', inputValue);
-            setInputValue('');
-        }
+    const handleSend = (textOrEvent) => {
+        const text = typeof textOrEvent === 'string' ? textOrEvent : inputValue;
+        if (!text?.trim()) return;
+        socket.emit('user_input', { text });
+        addMessage('You', text);
+        setInputValue('');
     };
+
+    const clearTranscript = () => setMessages([]);
 
     const handleMinimize = () => ipcRenderer?.send('window-minimize');
     const handleMaximize = () => ipcRenderer?.send('window-maximize');
@@ -1661,19 +1663,9 @@ function App() {
 
 
     return (
-        <div className={`${isMobileLayout ? 'min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto' : 'h-screen w-screen overflow-hidden'} bg-black text-cyan-100 font-mono flex flex-col relative selection:bg-cyan-900 selection:text-white`}>
-
-            {/* --- PREMIUM UI LAYER --- */}
-
-            {/* --- PREMIUM UI LAYER --- */}
-
-            {/* --- PREMIUM UI LAYER --- */}
-
-            {/* Logic: Show AuthLock if we are NOT authenticated AND (Lock Screen is visible OR Auth is Enabled) 
-                Actually, simpler: isLockScreenVisible is the source of truth for visibility.
-                We set isLockScreenVisible = true via socket if auth is required.
-             */}
-
+        <div className="h-screen w-screen overflow-hidden bg-black text-[#E6FBFF]">
+            <video ref={videoRef} autoPlay muted className="hidden" />
+            <canvas ref={canvasRef} className="hidden" />
             {isLockScreenVisible && (
                 <Suspense fallback={<LoadingPanel label="Loading auth..." />}>
                     <AuthLock
@@ -1683,452 +1675,83 @@ function App() {
                     />
                 </Suspense>
             )}
-
-            {/* --- PREMIUM UI LAYER --- */}
-
-            {/* Hand Cursor - Only show if tracking is enabled */}
-            {isVideoOn && isHandTrackingEnabled && (
-                <div
-                    className={`fixed w-6 h-6 border-2 rounded-full pointer-events-none z-[100] transition-transform duration-75 ${isPinching ? 'bg-cyan-400 border-cyan-400 scale-75 shadow-[0_0_15px_rgba(34,211,238,0.8)]' : 'border-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.3)]'}`}
-                    style={{
-                        left: cursorPos.x,
-                        top: cursorPos.y,
-                        transform: 'translate(-50%, -50%)'
-                    }}
-                >
-                    {/* Center Dot for precision */}
-                    <div className="absolute top-1/2 left-1/2 w-1 h-1 bg-white rounded-full -translate-x-1/2 -translate-y-1/2" />
-                </div>
-            )}
-
-            {/* Background Grid/Effects - ALIVE BACKGROUND (Fixed: Static opacity) */}
-            <div
-                className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gray-900 via-black to-black z-0 pointer-events-none"
-                style={{ opacity: 0.6 }}
-            ></div>
-            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 z-0 pointer-events-none mix-blend-overlay"></div>
-
-            {/* Ambient Glow (Fixed: Static) */}
-            <div
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-cyan-900/10 rounded-full blur-[120px] pointer-events-none"
+            <MobileShell
+                socket={socket}
+                status={status}
+                messages={messages}
+                onSend={handleSend}
+                onClearTranscript={clearTranscript}
+                isLive={isConnected && !isMuted}
+                audioBytes={aiAudioData}
+                micLevel={micAudioData.reduce((sum, value) => sum + value, 0) / (micAudioData.length || 1)}
+                onToggleSession={togglePower}
+                onInterrupt={() => socket.emit('interrupt_audio')}
+                kasaDevices={kasaDevices}
+                onOpenCad={() => setShowCadWindow(true)}
+                onOpenPrinters={() => setShowPrinterWindow(true)}
+                onOpenWeb={() => setShowBrowserWindow(true)}
+                onOpenLegacyStudio={() => setShowVideoStudioWindow(true)}
+                deviceProps={{
+                    micDevices,
+                    speakerDevices,
+                    webcamDevices,
+                    selectedMicId,
+                    setSelectedMicId,
+                    selectedSpeakerId,
+                    setSelectedSpeakerId,
+                    selectedWebcamId,
+                    setSelectedWebcamId,
+                    cursorSensitivity,
+                    setCursorSensitivity,
+                    isCameraFlipped,
+                    setIsCameraFlipped,
+                    handleFileUpload,
+                    mobileLayout: true,
+                }}
             />
-
-            {/* Top Bar (Draggable) */}
-            <div className={`z-50 flex items-center justify-between ${isMobileLayout ? 'flex-wrap gap-3 px-3 py-3' : 'p-2'} border-b border-cyan-500/20 bg-black/40 backdrop-blur-md select-none sticky top-0`} style={isElectron ? { WebkitAppRegion: 'drag' } : undefined}>
-                <div className={`flex items-center ${isMobileLayout ? 'flex-wrap gap-2 pl-0' : 'gap-4 pl-2'} min-w-0`}>
-                    <h1 className="text-xl font-bold tracking-[0.2em] text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
-                        A.D.A
-                    </h1>
-                    <div className="text-[10px] text-cyan-700 border border-cyan-900 px-1 rounded">
-                        V2.0.0
-                    </div>
-                    {/* FPS Counter */}
-                    {isVideoOn && (
-                        <div className="text-[10px] text-green-500 border border-green-900 px-1 rounded ml-2">
-                            FPS: {fps}
-                        </div>
-                    )}
-                    {/* Connected Printers Count */}
-                    {printerCount > 0 && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-green-400 border border-green-500/30 bg-green-500/10 px-2 py-0.5 rounded ml-2">
-                            <Printer size={10} className="text-green-400" />
-                            <span>{printerCount} Printer{printerCount !== 1 ? 's' : ''}</span>
-                        </div>
-                    )}
-                    {/* Connected Smart Devices Count */}
-                    {kasaDevices.length > 0 && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-yellow-400 border border-yellow-500/30 bg-yellow-500/10 px-2 py-0.5 rounded ml-2">
-                            <span>💡</span>
-                            <span>{kasaDevices.length} Device{kasaDevices.length !== 1 ? 's' : ''}</span>
-                        </div>
-                    )}
-                    {geminiKeyStatus?.slot && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-cyan-300 border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 rounded ml-2">
-                            <span>AI</span>
-                            <span>Key {geminiKeyStatus.slot}</span>
-                            <span className="uppercase opacity-70">{geminiKeyStatus.state}</span>
-                        </div>
-                    )}
-                </div>
-
-                {/* Top Visualizer (User Mic) */}
-                <div className={`flex-1 flex ${isMobileLayout ? 'order-3 basis-full justify-start' : 'justify-center mx-4'} min-w-0`}>
-                    <div className={`${isMobileLayout ? 'w-full max-w-full overflow-hidden' : ''}`}>
-                        <TopAudioBar audioData={micAudioData} />
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-2 pr-2" style={isElectron ? { WebkitAppRegion: 'no-drag' } : undefined}>
-                    {/* Live Clock */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-cyan-300/70 font-mono px-2">
-                        <Clock size={12} className="text-cyan-500/50" />
-                        <span>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    {isElectron && (
-                        <>
-                            <button onClick={handleMinimize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
-                                <Minus size={18} />
-                            </button>
-                            <button onClick={handleMaximize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
-                                <div className="w-[14px] h-[14px] border-2 border-current rounded-[2px]" />
-                            </button>
-                            <button onClick={handleCloseRequest} className="p-1 hover:bg-red-900/50 rounded text-red-500 transition-colors">
-                                <X size={18} />
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {(connectionBannerMessage || mediaWarning || (!secureMediaAvailable && !isElectron)) && (
-                <div className="sticky top-[72px] z-[60] px-3 pt-2">
-                    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 rounded-2xl border border-cyan-500/20 bg-slate-950/90 px-3 py-2 text-xs text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.08)] backdrop-blur-xl">
-                        <ShieldAlert size={14} className="text-cyan-400" />
-                        <span className="flex-1 min-w-[14rem]">{mediaWarning || connectionBannerMessage || 'Mobile browser safeguards are active.'}</span>
-                        {!socketConnected && (
-                            <button
-                                onClick={() => socket.connect()}
-                                className="inline-flex items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-widest text-cyan-300 transition-colors hover:bg-cyan-500/20"
-                            >
-                                <RefreshCw size={12} /> Retry
-                            </button>
-                        )}
-                        {!mediaPermissions.audio && secureMediaAvailable && !isRemoteBrowserClient && (
-                            <button
-                                onClick={() => requestMediaAccess({ audio: true })}
-                                className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-widest text-cyan-300 transition-colors hover:bg-cyan-500/20"
-                            >
-                                Allow Mic
-                            </button>
-                        )}
-                        {!mediaPermissions.video && secureMediaAvailable && (
-                            <button
-                                onClick={() => requestMediaAccess({ video: true })}
-                                className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-widest text-cyan-300 transition-colors hover:bg-cyan-500/20"
-                            >
-                                Allow Camera
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Main Content */}
-            <div className={`flex-1 relative z-10 flex flex-col items-center ${isMobileLayout ? 'justify-start px-3 pt-3 pb-6 gap-3' : 'justify-center'}`}>
-                {/* Central Visualizer (AI Audio) */}
-                <div
-                    id="visualizer"
-                    className={`${isMobileLayout ? 'relative w-full max-w-full' : 'absolute'} flex items-center justify-center transition-all duration-200 
-                        backdrop-blur-xl bg-black/30 border border-white/10 shadow-2xl overflow-visible
-                        ${isModularMode ? (activeDragElement === 'visualizer' ? 'ring-2 ring-green-500 bg-green-500/10' : 'ring-1 ring-yellow-500/30 bg-yellow-500/5') + ' rounded-2xl pointer-events-auto' : 'rounded-2xl pointer-events-none'}
-                    `}
-                    style={{
-                        ...(isMobileLayout ? {
-                            width: '100%',
-                            maxWidth: `${elementSizes.visualizer.w}px`
-                        } : {
-                            left: elementPositions.visualizer.x,
-                            top: elementPositions.visualizer.y,
-                            transform: 'translate(-50%, -50%)',
-                            width: elementSizes.visualizer.w
-                        }),
-                        height: elementSizes.visualizer.h
-                    }}
-                    onMouseDown={(e) => handleMouseDown(e, 'visualizer')}
-                >
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none mix-blend-overlay z-10"></div>
-                    <div className="relative z-20">
-                        <Visualizer
-                            audioData={aiAudioData}
-                            isListening={isConnected && !isMuted}
-                            intensity={audioAmp}
-                            width={elementSizes.visualizer.w}
-                            height={elementSizes.visualizer.h}
-                        />
-                    </div>
-                    {isModularMode && <div className={`absolute top-2 right-2 text-xs font-bold tracking-widest z-20 ${activeDragElement === 'visualizer' ? 'text-green-500' : 'text-yellow-500/50'}`}>VISUALIZER</div>}
-                </div>
-
-                {/* Video Feed Overlay */}
-                {/* Floating Project Label */}
-                <div className={`${isMobileLayout ? 'relative top-0 left-0 translate-x-0' : 'absolute top-[70px] left-1/2 -translate-x-1/2'} text-cyan-500 text-xs font-mono tracking-widest pointer-events-none z-50 bg-black/50 px-2 py-1 rounded backdrop-blur-sm border border-cyan-500/20`}>
-                    PROJECT: {currentProject?.toUpperCase()}
-                </div>
-
-                <div
-                    id="video"
-                    className={`fixed ${isMobileLayout ? 'top-[calc(env(safe-area-inset-top)+7rem)] right-3' : 'bottom-4 right-4'} transition-all duration-200 
-                        ${isVideoOn ? 'opacity-100' : 'opacity-0 pointer-events-none'} 
-                        backdrop-blur-md bg-black/40 border border-white/10 shadow-xl rounded-xl
-                    `}
-                    style={{ zIndex: 20 }}
-                >
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none mix-blend-overlay"></div>
-                    {/* Compact Display Container (1080p Source) */}
-                    <div className="relative border border-cyan-500/30 rounded-lg overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.1)] aspect-video bg-black/80" style={{ width: `${elementSizes.video.w}px` }}>
-                        {/* Hidden Video Element (Source) */}
-                        <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover opacity-0" />
-
-                        <div className="absolute top-2 left-2 text-[10px] text-cyan-400 bg-black/60 backdrop-blur px-2 py-0.5 rounded border border-cyan-500/20 z-10 font-bold tracking-wider">CAM_01</div>
-
-                        {/* Canvas for Displaying Video + Skeleton (Ensures overlap) */}
-                        <canvas
-                            ref={canvasRef}
-                            className="absolute inset-0 w-full h-full opacity-80"
-                            style={{ transform: isCameraFlipped ? 'scaleX(-1)' : 'none' }}
-                        />
-                    </div>
-                </div>
-
-                {/* Settings Modal - Moved outside Video so it shows independently */}
-                {showSettings && (
-                    <Suspense fallback={<LoadingPanel label="Loading settings..." />}>
-                        <SettingsWindow
-                            socket={socket}
-                            micDevices={micDevices}
-                            speakerDevices={speakerDevices}
-                            webcamDevices={webcamDevices}
-                            selectedMicId={selectedMicId}
-                            setSelectedMicId={setSelectedMicId}
-                            selectedSpeakerId={selectedSpeakerId}
-                            setSelectedSpeakerId={setSelectedSpeakerId}
-                            selectedWebcamId={selectedWebcamId}
-                            setSelectedWebcamId={setSelectedWebcamId}
-                            cursorSensitivity={cursorSensitivity}
-                            setCursorSensitivity={setCursorSensitivity}
-                            isCameraFlipped={isCameraFlipped}
-                            setIsCameraFlipped={setIsCameraFlipped}
-                            handleFileUpload={handleFileUpload}
-                            mobileLayout={isMobileLayout}
-                            onClose={() => setShowSettings(false)}
-                        />
-                    </Suspense>
-                )}
-
-                {/* CAD Window Overlay - Moved outside of Video so it can show independently */}
-                {showCadWindow && (
-                    <div
-                        id="cad"
-                        className={`${isMobileLayout ? 'fixed' : 'absolute'} flex flex-col transition-all duration-200 
-                        backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-2xl
-                        ${activeDragElement === 'cad' ? 'ring-2 ring-green-500 bg-green-500/10' : ''}
-                    `}
-                        style={{
-                            ...(isMobileLayout ? {
-                                left: '50%',
-                                top: 'calc(env(safe-area-inset-top) + 6.5rem)',
-                                transform: 'translateX(-50%)',
-                                width: `min(calc(100vw - 1.5rem), ${elementSizes.cad.w}px)`,
-                                height: `min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), ${elementSizes.cad.h}px)`
-                            } : {
-                                left: elementPositions.cad?.x || window.innerWidth / 2,
-                                top: elementPositions.cad?.y || window.innerHeight / 2,
-                                transform: 'translate(-50%, -50%)',
-                                width: `${elementSizes.cad.w}px`,
-                                height: `${elementSizes.cad.h}px`
-                            }),
-                            pointerEvents: 'auto',
-                            zIndex: getZIndex('cad')
-                        }}
-                        onMouseDown={(e) => handleMouseDown(e, 'cad')}
-                    >
-                        {/* Drag Handle Header */}
-                        <div
-                            data-drag-handle
-                            className="h-8 bg-gray-900/80 border-b border-cyan-500/20 flex items-center justify-between px-3 cursor-grab active:cursor-grabbing shrink-0"
-                        >
-                            <span className="text-xs font-bold tracking-widest text-cyan-500/70">CAD PROTOTYPE</span>
-                            <button
-                                onClick={() => setShowCadWindow(false)}
-                                className="text-gray-400 hover:text-red-400 hover:bg-red-500/20 p-1 rounded transition-colors"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none mix-blend-overlay z-10"></div>
-                        <div className="relative z-20 flex-1 min-h-0">
-                            <Suspense fallback={<LoadingPanel label="Loading CAD..." />}>
-                                <CadWindow
-                                    data={cadData}
-                                    thoughts={cadThoughts}
-                                    retryInfo={cadRetryInfo}
-                                    onClose={() => setShowCadWindow(false)}
-                                    socket={socket}
-                                    mobileLayout={isMobileLayout}
-                                />
-                            </Suspense>
-                        </div>
-                    </div>
-                )}
-
-
-                {/* Browser Window Overlay */}
-                {showBrowserWindow && (
-                    <div
-                        id="browser"
-                        className={`${isMobileLayout ? 'fixed' : 'absolute'} flex flex-col transition-all duration-200 
-                        backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-lg
-                        ${activeDragElement === 'browser' ? 'ring-2 ring-green-500 bg-green-500/10' : ''}
-                    `}
-                        style={{
-                            ...(isMobileLayout ? {
-                                left: '50%',
-                                top: 'calc(env(safe-area-inset-top) + 6.5rem)',
-                                transform: 'translateX(-50%)',
-                                width: `min(calc(100vw - 1.5rem), ${elementSizes.browser.w}px)`,
-                                height: `min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), ${elementSizes.browser.h}px)`
-                            } : {
-                                left: elementPositions.browser?.x || window.innerWidth / 2 - 200,
-                                top: elementPositions.browser?.y || window.innerHeight / 2,
-                                transform: 'translate(-50%, -50%)',
-                                width: `${elementSizes.browser.w}px`,
-                                height: `${elementSizes.browser.h}px`
-                            }),
-                            pointerEvents: 'auto',
-                            zIndex: getZIndex('browser')
-                        }}
-                        onMouseDown={(e) => handleMouseDown(e, 'browser')}
-                    >
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none mix-blend-overlay z-10"></div>
-                        <div className="relative z-20 w-full h-full">
-                            <Suspense fallback={<LoadingPanel label="Loading browser..." />}>
-                                <BrowserWindow
-                                    imageSrc={browserData.image}
-                                    logs={browserData.logs}
-                                    onClose={() => setShowBrowserWindow(false)}
-                                    socket={socket}
-                                    mobileLayout={isMobileLayout}
-                                />
-                            </Suspense>
-                        </div>
-                    </div>
-                )}
-
-                {showVideoStudioWindow && (
-                    <div
-                        id="videoContent"
-                        className={`${isMobileLayout ? 'fixed' : 'absolute'} flex flex-col transition-all duration-200 backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-2xl ${activeDragElement === 'videoContent' ? 'ring-2 ring-green-500 bg-green-500/10' : ''}`}
-                        style={{
-                            ...(isMobileLayout ? {
-                                left: '50%',
-                                top: 'calc(env(safe-area-inset-top) + 6.5rem)',
-                                transform: 'translateX(-50%)',
-                                width: `min(calc(100vw - 1.5rem), ${elementSizes.videoContent.w}px)`,
-                                height: `min(calc(100dvh - 8rem - env(safe-area-inset-bottom)), ${elementSizes.videoContent.h}px)`
-                            } : {
-                                left: elementPositions.videoContent?.x || window.innerWidth / 2,
-                                top: elementPositions.videoContent?.y || window.innerHeight / 2,
-                                transform: 'translate(-50%, -50%)',
-                                width: `${elementSizes.videoContent.w}px`,
-                                height: `${elementSizes.videoContent.h}px`
-                            }),
-                            pointerEvents: 'auto',
-                            zIndex: getZIndex('videoContent')
-                        }}
-                        onMouseDown={(e) => handleMouseDown(e, 'videoContent')}
-                    >
-                        <Suspense fallback={<LoadingPanel label="Loading video studio..." />}>
-                            <VideoContentWindow
-                                socket={socket}
-                                data={videoContentData}
-                                status={videoContentStatus}
-                                onClose={() => setShowVideoStudioWindow(false)}
-                                mobileLayout={isMobileLayout}
-                            />
+            {showCadWindow && (
+                <div className="fixed inset-0 z-50 flex flex-col bg-black">
+                    <button type="button" onClick={() => setShowCadWindow(false)} className="px-4 py-3 text-left font-mono text-sm tracking-[2px] text-[#22D3EE]">Back · CAD</button>
+                    <div className="min-h-0 flex-1">
+                        <Suspense fallback={<LoadingPanel label="Loading CAD..." />}>
+                            <CadWindow data={cadData} thoughts={cadThoughts} retryInfo={cadRetryInfo} onClose={() => setShowCadWindow(false)} socket={socket} mobileLayout />
                         </Suspense>
                     </div>
-                )}
-
-
-                {/* Chat Module */}
-                <ChatModule
-                    messages={messages}
-                    inputValue={inputValue}
-                    setInputValue={setInputValue}
-                    handleSend={handleSend}
-                    isModularMode={isModularMode}
-                    activeDragElement={activeDragElement}
-                    position={elementPositions.chat}
-                    width={elementSizes.chat.w}
-                    height={elementSizes.chat.h}
-                    mobileLayout={isMobileLayout}
-                    onMouseDown={(e) => handleMouseDown(e, 'chat')}
-                />
-
-                {/* Footer Controls / Tools Module */}
-                <div className={`z-20 flex justify-center ${isMobileLayout ? 'w-full pb-2 pointer-events-auto' : 'pb-10 pointer-events-none'}`}>
-                    <ToolsModule
-                        isConnected={isConnected}
-                        isMuted={isMuted}
-                        isVideoOn={isVideoOn}
-                        isHandTrackingEnabled={isHandTrackingEnabled}
-                        showSettings={showSettings}
-                        onTogglePower={togglePower}
-                        onToggleMute={toggleMute}
-                        onToggleVideo={toggleVideo}
-                        onToggleSettings={() => setShowSettings(!showSettings)}
-                        onToggleHand={() => setIsHandTrackingEnabled(!isHandTrackingEnabled)}
-                        onToggleKasa={toggleKasaWindow}
-                        showKasaWindow={showKasaWindow}
-                        onTogglePrinter={togglePrinterWindow}
-                        showPrinterWindow={showPrinterWindow}
-                        onToggleCad={() => setShowCadWindow(!showCadWindow)}
-                        showCadWindow={showCadWindow}
-                        onToggleBrowser={() => setShowBrowserWindow(!showBrowserWindow)}
-                        showBrowserWindow={showBrowserWindow}
-                        onToggleVideoStudio={toggleVideoStudioWindow}
-                        showVideoStudioWindow={showVideoStudioWindow}
-                        activeDragElement={activeDragElement}
-                        position={elementPositions.tools}
-                        mobileLayout={isMobileLayout}
-                        onMouseDown={(e) => handleMouseDown(e, 'tools')}
-                    />
                 </div>
-
-                {/* Kasa Window */}
-                {showKasaWindow && (
-                    <Suspense fallback={<LoadingPanel label="Loading devices..." />}>
-                        <KasaWindow
-                            socket={socket}
-                            position={elementPositions.kasa}
-                            activeDragElement={activeDragElement}
-                            setActiveDragElement={setActiveDragElement}
-                            devices={kasaDevices}
-                            onClose={() => setShowKasaWindow(false)}
-                            onMouseDown={(e) => handleMouseDown(e, 'kasa')}
-                            zIndex={getZIndex('kasa')}
-                            mobileLayout={isMobileLayout}
-                        />
-                    </Suspense>
-                )}
-
-                {/* Printer Window */}
-                {showPrinterWindow && (
-                    <Suspense fallback={<LoadingPanel label="Loading printers..." />}>
-                        <PrinterWindow
-                            socket={socket}
-                            onClose={() => setShowPrinterWindow(false)}
-                            position={elementPositions.printer}
-                            onMouseDown={(e) => handleMouseDown(e, 'printer')}
-                            activeDragElement={activeDragElement}
-                            setActiveDragElement={setActiveDragElement}
-                            zIndex={getZIndex('printer')}
-                            mobileLayout={isMobileLayout}
-                        />
-                    </Suspense>
-                )}
-
-                {/* Memory Prompt removed - memory is now actively saved to project */}
-
-                {/* Tool Confirmation Modal */}
-                <Suspense fallback={null}>
-                    <ConfirmationPopup
-                        request={confirmationRequest}
-                        onConfirm={handleConfirmTool}
-                        onDeny={handleDenyTool}
-                    />
-                </Suspense>
-            </div>
+            )}
+            {showBrowserWindow && (
+                <div className="fixed inset-0 z-50 flex flex-col bg-black">
+                    <button type="button" onClick={() => setShowBrowserWindow(false)} className="px-4 py-3 text-left font-mono text-sm tracking-[2px] text-[#22D3EE]">Back · Web</button>
+                    <div className="min-h-0 flex-1">
+                        <Suspense fallback={<LoadingPanel label="Loading browser..." />}>
+                            <BrowserWindow imageSrc={browserData.image} logs={browserData.logs} onClose={() => setShowBrowserWindow(false)} socket={socket} mobileLayout />
+                        </Suspense>
+                    </div>
+                </div>
+            )}
+            {showPrinterWindow && (
+                <div className="fixed inset-0 z-50 flex flex-col bg-black">
+                    <button type="button" onClick={() => setShowPrinterWindow(false)} className="px-4 py-3 text-left font-mono text-sm tracking-[2px] text-[#22D3EE]">Back · Printers</button>
+                    <div className="min-h-0 flex-1 overflow-auto">
+                        <Suspense fallback={<LoadingPanel label="Loading printers..." />}>
+                            <PrinterWindow socket={socket} onClose={() => setShowPrinterWindow(false)} mobileLayout />
+                        </Suspense>
+                    </div>
+                </div>
+            )}
+            {showVideoStudioWindow && (
+                <div className="fixed inset-0 z-50 flex flex-col bg-black">
+                    <button type="button" onClick={() => setShowVideoStudioWindow(false)} className="px-4 py-3 text-left font-mono text-sm tracking-[2px] text-[#22D3EE]">Back · Runway / InVideo / Canva</button>
+                    <div className="min-h-0 flex-1 overflow-auto">
+                        <Suspense fallback={<LoadingPanel label="Loading video studio..." />}>
+                            <VideoContentWindow socket={socket} data={videoContentData} status={videoContentStatus} onClose={() => setShowVideoStudioWindow(false)} mobileLayout />
+                        </Suspense>
+                    </div>
+                </div>
+            )}
+            <Suspense fallback={null}>
+                <ConfirmationPopup request={confirmationRequest} onConfirm={handleConfirmTool} onDeny={handleDenyTool} />
+            </Suspense>
         </div>
     );
 }
