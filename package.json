@@ -8,14 +8,14 @@
     "dev:mobile": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "build:android": "npm run build && npx cap sync android",
-    "apk:debug": "npm run build:android && cd android && JAVA_HOME=/home/codespace/java/21.0.9-ms ANDROID_HOME=$PWD/android-sdk ANDROID_SDK_ROOT=$PWD/android-sdk PATH=/home/codespace/java/21.0.9-ms/bin:$PWD/android-sdk/platform-tools:$PATH ./gradlew assembleDebug",
-    "apk:release": "npm run build:android && cd android && JAVA_HOME=/home/codespace/java/21.0.9-ms ANDROID_HOME=$PWD/android-sdk ANDROID_SDK_ROOT=$PWD/android-sdk PATH=/home/codespace/java/21.0.9-ms/bin:$PWD/android-sdk/platform-tools:$PATH ./gradlew assembleRelease",
+    "apk:debug": "npm run build:android && cd android && ./gradlew assembleDebug",
+    "apk:release": "npm run build:android && cd android && ./gradlew assembleRelease",
     "android": "npx cap open android",
     "preview:mobile": "vite preview --host 0.0.0.0 --port 4173",
     "start": "npx electron ."
   },
   "keywords": [],
-  "author": "",
+  "author": "Jeffrey Llamas",
   "license": "ISC",
   "dependencies": {
     "@capacitor/android": "^8.3.0",

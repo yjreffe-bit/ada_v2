@@ -1,5 +1,5 @@
 import asyncio
-from kasa import Discover, SmartDevice, SmartBulb, SmartPlug
+from kasa import Discover
 
 class KasaAgent:
     def __init__(self, known_devices=None):
@@ -25,9 +25,7 @@ class KasaAgent:
     async def _add_known_device(self, ip, alias, info):
         """Adds a device from settings without discovery scan."""
         try:
-            # We can't know the exact class (Bulb/Plug) without connecting, 
-            # but Discover.discover_single might work, or just SmartDevice(ip)
-            # SmartDevice is the base class.
+            # Discover.discover_single connects and returns the right device type.
             dev = await Discover.discover_single(ip)
             if dev:
                 await dev.update()
@@ -56,32 +54,56 @@ class KasaAgent:
             
         device_list = []
         for ip, dev in self.devices.items():
-            # Determine type and capabilities
-            dev_type = "unknown"
-            if dev.is_bulb:
-                dev_type = "bulb"
-            elif dev.is_plug:
-                dev_type = "plug"
-            elif dev.is_strip:
-                dev_type = "strip"
-            elif dev.is_dimmer:
-                dev_type = "dimmer"
-
-            device_info = {
-                "ip": ip,
-                "alias": dev.alias,
-                "model": dev.model,
-                "type": dev_type,
-                "is_on": dev.is_on,
-                "brightness": dev.brightness if dev.is_bulb or dev.is_dimmer else None,
-                "hsv": dev.hsv if dev.is_bulb and dev.is_color else None,
-                "has_color": dev.is_color if dev.is_bulb else False,
-                "has_brightness": dev.is_dimmable if dev.is_bulb or dev.is_dimmer else False
-            }
-            device_list.append(device_info)
+            device_list.append(self.describe_device(ip, dev))
             
         print(f"Total Kasa devices (found + cached): {len(device_list)}")
         return device_list
+
+    def _flag(self, dev, name, default=False):
+        """Read a capability flag.
+
+        python-kasa's deprecated accessors (is_dimmable, is_color, ...) raise
+        AttributeError when the device modules mapping is missing.
+        """
+        try:
+            return bool(getattr(dev, name))
+        except Exception:
+            return default
+
+    def _value(self, dev, name, default=None):
+        try:
+            return getattr(dev, name)
+        except Exception:
+            return default
+
+    def describe_device(self, ip, dev):
+        """Snapshot a device for the UI without letting a capability probe crash."""
+        is_bulb = self._flag(dev, "is_bulb")
+        is_plug = self._flag(dev, "is_plug")
+        is_strip = self._flag(dev, "is_strip")
+        is_dimmer = self._flag(dev, "is_dimmer")
+        if is_bulb:
+            dev_type = "bulb"
+        elif is_plug:
+            dev_type = "plug"
+        elif is_strip:
+            dev_type = "strip"
+        elif is_dimmer:
+            dev_type = "dimmer"
+        else:
+            dev_type = "unknown"
+
+        return {
+            "ip": ip,
+            "alias": self._value(dev, "alias"),
+            "model": self._value(dev, "model"),
+            "type": dev_type,
+            "is_on": self._flag(dev, "is_on"),
+            "brightness": self._value(dev, "brightness") if is_bulb or is_dimmer else None,
+            "hsv": self._value(dev, "hsv") if is_bulb and self._flag(dev, "is_color") else None,
+            "has_color": self._flag(dev, "is_color") if is_bulb else False,
+            "has_brightness": self._flag(dev, "is_dimmable") if is_bulb or is_dimmer else False,
+        }
 
     def get_device_by_alias(self, alias):
         """Finds a device by its alias (case-insensitive)."""
@@ -176,7 +198,7 @@ class KasaAgent:
     async def set_brightness(self, target, brightness):
         """Sets brightness (0-100)."""
         dev = self._resolve_device(target)
-        if dev and (dev.is_dimmable or dev.is_bulb):
+        if dev and (self._flag(dev, "is_dimmable") or self._flag(dev, "is_bulb")):
             try:
                 await dev.set_brightness(int(brightness))
                 await dev.update()
@@ -188,7 +210,7 @@ class KasaAgent:
     async def set_color(self, target, color_input):
         """Sets color by name or direct HSV tuple."""
         dev = self._resolve_device(target)
-        if not dev or not dev.is_color:
+        if not dev or not self._flag(dev, "is_color"):
             return False
 
         hsv = None

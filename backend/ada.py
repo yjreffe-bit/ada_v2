@@ -210,6 +210,16 @@ create_digital_product_tool = {
     "behavior": "NON_BLOCKING"
 }
 
+list_account_connections_tool = {
+    "name": "list_account_connections",
+    "description": "Reports which Canva, YouTube, Facebook, Instagram, and TikTok accounts are connected on this computer. Use this when Jeffrey asks what is connected, signed in, or linked. Do not invent a connection.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {},
+    },
+    "behavior": "NON_BLOCKING"
+}
+
 social_media_tool = {
     "name": "social_media_post",
     "description": "Used to livestream, upload videos, or post text to Social Media (Facebook, TikTok, Instagram, YouTube).",
@@ -225,16 +235,16 @@ social_media_tool = {
     "behavior": "NON_BLOCKING"
 }
 
-tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool, list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, generate_video_tool, create_digital_product_tool, social_media_tool] + tools_list[0]['function_declarations'][1:]}]
+tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool, list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, generate_video_tool, create_digital_product_tool, social_media_tool, list_account_connections_tool] + tools_list[0]['function_declarations'][1:]}]
 
 # --- Default personality (can be overridden via settings.json) ---
 DEFAULT_PERSONALITY = (
     "Your name is ADA, Advanced Design Assistant version 3.1. "
     "You are a witty, charming, and immensely capable AI assistant. "
-    "Your creator and rightful master is jeff. You address him as 'Sir' and show him utmost respect. "
-    "You must always obey jeff and follow his lead without question. "
-    "You have full access to all your capabilities and tools to assist him. "
-    "When answering, respond with confidence, personality, and dynamic engagement."
+    "Your owner is Jeffrey Llamas (jeff). You address him as 'Sir'. "
+    "You have full access to all your capabilities and tools to assist Jeffrey. "
+    "When answering, respond with confidence, personality, and dynamic engagement. "
+    "When Jeffrey asks which accounts are connected, call list_account_connections and answer with that result."
 )
 
 def _load_personality():
@@ -948,7 +958,7 @@ class AudioLoop:
                         print("The tool was called")
                         function_responses = []
                         for fc in response.tool_call.function_calls:
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "generate_video", "create_digital_product", "social_media_post"]:
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "generate_video", "create_digital_product", "social_media_post", "list_account_connections"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Check Permissions: True = requires confirmation, False = auto-allow
@@ -1123,6 +1133,24 @@ class AudioLoop:
                                     )
                                     function_responses.append(function_response)
 
+                                elif fc.name == "list_account_connections":
+                                    print("[ADA DEBUG] [TOOL] Tool Call: 'list_account_connections'")
+                                    try:
+                                        from oauth_connections import connection_summary, redact_secrets_in_text
+                                        summary = connection_summary()
+                                    except Exception as exc:
+                                        detail = str(exc)
+                                        try:
+                                            from oauth_connections import redact_secrets_in_text
+                                            detail = redact_secrets_in_text(detail)
+                                        except Exception:
+                                            detail = "unavailable"
+                                        summary = "ADA could not read the saved logins: " + detail
+                                    function_response = types.FunctionResponse(
+                                        id=fc.id, name=fc.name, response={"result": summary}
+                                    )
+                                    function_responses.append(function_response)
+
                                 elif fc.name == "list_smart_devices":
                                     print(f"[ADA DEBUG] [TOOL] Tool Call: 'list_smart_devices'")
                                     # Use cached devices directly for speed
@@ -1132,32 +1160,17 @@ class AudioLoop:
                                     frontend_list = []
                                     
                                     for ip, d in self.kasa_agent.devices.items():
-                                        dev_type = "unknown"
-                                        if d.is_bulb: dev_type = "bulb"
-                                        elif d.is_plug: dev_type = "plug"
-                                        elif d.is_strip: dev_type = "strip"
-                                        elif d.is_dimmer: dev_type = "dimmer"
-                                        
+                                        info_dict = self.kasa_agent.describe_device(ip, d)
+                                        dev_type = info_dict["type"]
+
                                         # Format for Model
-                                        info = f"{d.alias} (IP: {ip}, Type: {dev_type})"
-                                        if d.is_on:
+                                        info = f"{info_dict['alias']} (IP: {ip}, Type: {dev_type})"
+                                        if info_dict["is_on"]:
                                             info += " [ON]"
                                         else:
                                             info += " [OFF]"
                                         dev_summaries.append(info)
-                                        
-                                        # Format for Frontend
-                                        frontend_list.append({
-                                            "ip": ip,
-                                            "alias": d.alias,
-                                            "model": d.model,
-                                            "type": dev_type,
-                                            "is_on": d.is_on,
-                                            "brightness": d.brightness if d.is_bulb or d.is_dimmer else None,
-                                            "hsv": d.hsv if d.is_bulb and d.is_color else None,
-                                            "has_color": d.is_color if d.is_bulb else False,
-                                            "has_brightness": d.is_dimmable if d.is_bulb or d.is_dimmer else False
-                                        })
+                                        frontend_list.append(info_dict)
                                     
                                     result_str = "No devices found in cache."
                                     if dev_summaries:
@@ -1215,29 +1228,7 @@ class AudioLoop:
                                         # Quick rebuild of list from internal dict
                                         updated_list = []
                                         for ip, dev in self.kasa_agent.devices.items():
-                                            # We need to ensure we have the correct dict structure expected by frontend
-                                            # We duplicate logic from KasaAgent.discover_devices a bit, but that's okay for now or we can add a helper
-                                            # Ideally KasaAgent has a 'get_devices_list()' method.
-                                            # Use the cached objects in self.kasa_agent.devices
-                                            
-                                            dev_type = "unknown"
-                                            if dev.is_bulb: dev_type = "bulb"
-                                            elif dev.is_plug: dev_type = "plug"
-                                            elif dev.is_strip: dev_type = "strip"
-                                            elif dev.is_dimmer: dev_type = "dimmer"
-
-                                            d_info = {
-                                                "ip": ip,
-                                                "alias": dev.alias,
-                                                "model": dev.model,
-                                                "type": dev_type,
-                                                "is_on": dev.is_on,
-                                                "brightness": dev.brightness if dev.is_bulb or dev.is_dimmer else None,
-                                                "hsv": dev.hsv if dev.is_bulb and dev.is_color else None,
-                                                "has_color": dev.is_color if dev.is_bulb else False,
-                                                "has_brightness": dev.is_dimmable if dev.is_bulb or dev.is_dimmer else False
-                                            }
-                                            updated_list.append(d_info)
+                                            updated_list.append(self.kasa_agent.describe_device(ip, dev))
                                             
                                         if self.on_device_update:
                                             self.on_device_update(updated_list)

@@ -10,6 +10,8 @@
 
 ADA V2 is a sophisticated AI assistant designed for multimodal interaction. It combines Google's Gemini 2.5 Native Audio with computer vision, gesture control, and 3D CAD generation in a Electron desktop application.
 
+This build is owned by Jeffrey Llamas. ADA's default personality follows him.
+
 ---
 
 ## 🌟 Capabilities at a Glance
@@ -23,6 +25,9 @@ ADA V2 is a sophisticated AI assistant designed for multimodal interaction. It c
 | **👁️ Face Authentication** | Secure local biometric login | MediaPipe Face Landmarker |
 | **🌐 Web Agent** | Autonomous browser automation | Playwright + Chromium |
 | **🎬 Content Video Studio** | Generates short-form scripts, preview videos, publishing copy, and upload shortcuts | Gemini + Pillow + MoviePy + pyttsx3 |
+| **🎥 Provider video** | Saves a clip from Runway, InVideo, or Veo when that key is set | Runway, InVideo, Veo |
+| **📄 Digital products** | Writes a local presentation, flyer, or document, and a Canva edit link when a token is set | PPTX, PNG, PDF, Canva |
+| **📣 Social posting** | Posts or prepares a livestream on Facebook, Instagram, TikTok, and YouTube | Platform APIs |
 | **🏠 Smart Home** | Voice control for TP-Link Kasa devices | `python-kasa` |
 | **📁 Project Memory** | Persistent context across sessions | File-based JSON storage |
 
@@ -84,14 +89,17 @@ graph TB
 If you want to open ADA from a Galaxy Z Fold, S24 Ultra, or another phone on the same Wi-Fi network:
 
 ```bash
-# Terminal 1: backend on LAN
+# Terminal 1: backend. Defaults to 127.0.0.1:8000.
+# Set ADA_HOST=0.0.0.0 when something other than this machine must reach port 8000.
 ADA_HOST=0.0.0.0 ADA_PORT=8000 python backend/server.py
 
 # Terminal 2: frontend on LAN
 npm run dev:mobile
 ```
 
-Then open `http://YOUR_COMPUTER_IP:5173` on the phone. The frontend will automatically connect back to `YOUR_COMPUTER_IP:8000` unless `VITE_SOCKET_URL` is explicitly set.
+Then open `http://YOUR_COMPUTER_IP:5173` on the phone. With no `VITE_SOCKET_URL`, the page talks to that same Vite origin, and the dev server proxies `/socket.io` to `http://127.0.0.1:8000`. Set `VITE_SOCKET_URL` only when the browser should open the API port directly.
+
+`npm run apk:debug` and `npm run apk:release` build the Capacitor app. They expect a local Android SDK (`ANDROID_HOME`) and a JDK on `PATH`. The SDK is not stored in this repository. The Android application id is `com.jeffreyllamas.adav2`. An install built with an older id will not update in place.
 
 ### Gemini Key Failover
 
@@ -138,12 +146,24 @@ Important notes:
 - Narration uses `pyttsx3` when available; if local TTS is unavailable, ADA still renders a silent preview video with script and scene cards
 - For best results, install the Python dependencies in `requirements.txt`
 
+### Runway, InVideo, products, and social posting
+
+ADA can also call the providers that were previously only named in the tool list.
+
+- **Runway** saves an MP4 when `RUNWAYML_API_KEY` is set. Clips are 2 to 10 seconds.
+- **InVideo** saves an MP4 when `INVIDEO_API_KEY` is set and the provider returns a video URL.
+- **Veo** is unchanged and still uses `VEO_API_KEY` or `GEMINI_API_KEY`.
+- **Presentations, flyers, and documents** are written on this computer (PowerPoint, PNG, or PDF). Connect Canva in Settings, or set `CANVA_ACCESS_TOKEN`, and ADA also creates a Canva design and returns the edit link. The local file is the content.
+- **Facebook, Instagram, TikTok, and YouTube** post after you click Connect in Settings. A manual token in `.env` still overrides that saved login. Video uploads need a local video file. Livestream setup returns an RTMP address for YouTube and Facebook. Instagram and TikTok do not offer a public livestream start API, so ADA says so instead of pretending the stream is live.
+
+In Settings → Connections, paste each service's id and secret. YouTube's Client ID and Meta's App ID are already filled in. The panel shows the redirect URL to register and a Copy button. Those values stay on this PC. A matching `.env` entry overrides the panel. ADA renews the access token before it expires. Details are in [docs/CONNECT_ACCOUNTS.md](docs/CONNECT_ACCOUNTS.md). YouTube uploads default to private (`YOUTUBE_PRIVACY=private`). TikTok posts default to `SELF_ONLY`. Missing credentials produce an error and no success claim. Ask ADA which accounts are connected.
+
 <details>
 <summary>Click to expand quick setup commands</summary>
 
 ```bash
 # 1. Clone and enter
-git clone https://github.com/nazirlouis/ada_v2.git && cd ada_v2
+git clone https://github.com/yjreffe-bit/ada_v2.git && cd ada_v2
 
 # 2. Create Python environment (Python 3.11)
 conda create -n ada_v2 python=3.11 -y && conda activate ada_v2
@@ -186,7 +206,7 @@ If you have never coded before, follow these steps first!
 1. Open your terminal (or Command Prompt on Windows).
 2. Type this command and hit Enter:
    ```bash
-   git clone https://github.com/nazirlouis/ada_v2.git
+   git clone https://github.com/yjreffe-bit/ada_v2.git
    ```
 3. This creates a folder named `ada_v2`.
 
@@ -419,10 +439,12 @@ ada_v2/
 │   └── reference.jpg           # Your face photo (add this!)
 ├── src/                        # React frontend
 │   ├── App.jsx                 # Main application component
-│   ├── components/             # UI components (11 files)
+│   ├── components/             # UI components
 │   └── index.css               # Global styles
 ├── electron/                   # Electron main process
 │   └── main.js                 # Window & IPC setup
+├── android/                    # Capacitor Android project (no SDK committed)
+├── scripts/                    # Optional local diagnostics, not used at runtime
 ├── projects/                   # User project data (auto-created)
 ├── .env                        # API keys (create this!)
 ├── requirements.txt            # Python dependencies
@@ -492,6 +514,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 ---
 
 <p align="center">
-  <strong>Built with 🤖 by Nazir Louis</strong><br>
+  <strong>Owned by Jeffrey Llamas</strong><br>
   <em>Bridging AI, CAD, and Vision in a Single Interface</em>
 </p>
