@@ -8,14 +8,17 @@ from playwright.async_api import async_playwright
 from google import genai
 from google.genai import types
 
-# 1. Load API Key
-load_dotenv(Path(__file__).with_name('.env'))
-API_KEY = os.getenv("GEMINI_API_KEY")
+# Load the documented project-root .env, then a backend-local file if one exists.
+# Missing keys must not crash import: the server can run without Gemini, and tests import this module.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(Path(__file__).with_name(".env"))
 
-if not API_KEY:
-    raise ValueError("Please set GEMINI_API_KEY in your .env file")
 
-# 2. Configuration
+def _gemini_api_key():
+    return (os.getenv("GEMINI_API_KEY") or "").strip()
+
+
+# Configuration
 SCREEN_WIDTH = 1440
 SCREEN_HEIGHT = 900
 # UPDATED: Use the specific Computer Use preview model
@@ -23,7 +26,8 @@ MODEL_ID = "gemini-2.5-computer-use-preview-10-2025"
 
 class WebAgent:
     def __init__(self):
-        self.client = genai.Client(api_key=API_KEY)
+        api_key = _gemini_api_key()
+        self.client = genai.Client(api_key=api_key) if api_key else None
         self.browser = None
         self.context = None
         self.page = None
@@ -190,6 +194,13 @@ class WebAgent:
         update_callback: async function(screenshot_b64: str, logs: str)
         Returns the final response from the agent.
         """
+        if self.client is None:
+            message = "Please set GEMINI_API_KEY in your .env file"
+            print(f"[CRITICAL] {message}")
+            if update_callback:
+                await update_callback(None, f"Error: {message}")
+            return message
+
         print(f"[START] WebAgent started. Goal: {prompt}")
         final_response = "Agent finished without a final summary."
 

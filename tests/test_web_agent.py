@@ -25,6 +25,17 @@ class TestWebAgentInit:
         assert hasattr(agent, 'page')
         assert hasattr(agent, 'context')
 
+    @pytest.mark.asyncio
+    async def test_run_task_without_api_key_returns_error(self, monkeypatch):
+        """Importing and running the agent must not raise when no key is configured."""
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        agent = WebAgent()
+        assert agent.client is None
+
+        result = await agent.run_task("Navigate to example.com")
+
+        assert "GEMINI_API_KEY" in result
+
 
 class TestCoordinateDenormalization:
     """Test coordinate conversion functions."""

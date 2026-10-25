@@ -84,14 +84,17 @@ graph TB
 If you want to open ADA from a Galaxy Z Fold, S24 Ultra, or another phone on the same Wi-Fi network:
 
 ```bash
-# Terminal 1: backend on LAN
+# Terminal 1: backend. Defaults to 127.0.0.1:8000.
+# Set ADA_HOST=0.0.0.0 when something other than this machine must reach port 8000.
 ADA_HOST=0.0.0.0 ADA_PORT=8000 python backend/server.py
 
 # Terminal 2: frontend on LAN
 npm run dev:mobile
 ```
 
-Then open `http://YOUR_COMPUTER_IP:5173` on the phone. The frontend will automatically connect back to `YOUR_COMPUTER_IP:8000` unless `VITE_SOCKET_URL` is explicitly set.
+Then open `http://YOUR_COMPUTER_IP:5173` on the phone. With no `VITE_SOCKET_URL`, the page talks to that same Vite origin, and the dev server proxies `/socket.io` to `http://127.0.0.1:8000`. Set `VITE_SOCKET_URL` only when the browser should open the API port directly.
+
+`npm run apk:debug` and `npm run apk:release` build the Capacitor app. They expect a local Android SDK (`ANDROID_HOME`) and a JDK on `PATH`. The SDK is not stored in this repository.
 
 ### Gemini Key Failover
 
@@ -419,10 +422,12 @@ ada_v2/
 │   └── reference.jpg           # Your face photo (add this!)
 ├── src/                        # React frontend
 │   ├── App.jsx                 # Main application component
-│   ├── components/             # UI components (11 files)
+│   ├── components/             # UI components
 │   └── index.css               # Global styles
 ├── electron/                   # Electron main process
 │   └── main.js                 # Window & IPC setup
+├── android/                    # Capacitor Android project (no SDK committed)
+├── scripts/                    # Optional local diagnostics, not used at runtime
 ├── projects/                   # User project data (auto-created)
 ├── .env                        # API keys (create this!)
 ├── requirements.txt            # Python dependencies

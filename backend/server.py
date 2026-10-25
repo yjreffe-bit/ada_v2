@@ -1277,10 +1277,13 @@ async def update_tool_permissions(sid, data):
     await sio.emit('tool_permissions', SETTINGS["tool_permissions"])
 
 if __name__ == "__main__":
+    # Desktop Electron expects 127.0.0.1:8000. LAN mode sets ADA_HOST=0.0.0.0.
+    bind_host = os.environ.get("ADA_HOST", "127.0.0.1") or "127.0.0.1"
+    bind_port = int(os.environ.get("ADA_PORT", "8000") or "8000")
     uvicorn.run(
         "server:app_socketio", 
-        host="127.0.0.1", 
-        port=8000, 
+        host=bind_host, 
+        port=bind_port, 
         reload=False, # Reload enabled causes spawn of worker which might miss the event loop policy patch
         loop="asyncio",
         reload_excludes=["temp_cad_gen.py", "output.stl", "*.stl"]

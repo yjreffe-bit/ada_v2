@@ -1132,32 +1132,17 @@ class AudioLoop:
                                     frontend_list = []
                                     
                                     for ip, d in self.kasa_agent.devices.items():
-                                        dev_type = "unknown"
-                                        if d.is_bulb: dev_type = "bulb"
-                                        elif d.is_plug: dev_type = "plug"
-                                        elif d.is_strip: dev_type = "strip"
-                                        elif d.is_dimmer: dev_type = "dimmer"
-                                        
+                                        info_dict = self.kasa_agent.describe_device(ip, d)
+                                        dev_type = info_dict["type"]
+
                                         # Format for Model
-                                        info = f"{d.alias} (IP: {ip}, Type: {dev_type})"
-                                        if d.is_on:
+                                        info = f"{info_dict['alias']} (IP: {ip}, Type: {dev_type})"
+                                        if info_dict["is_on"]:
                                             info += " [ON]"
                                         else:
                                             info += " [OFF]"
                                         dev_summaries.append(info)
-                                        
-                                        # Format for Frontend
-                                        frontend_list.append({
-                                            "ip": ip,
-                                            "alias": d.alias,
-                                            "model": d.model,
-                                            "type": dev_type,
-                                            "is_on": d.is_on,
-                                            "brightness": d.brightness if d.is_bulb or d.is_dimmer else None,
-                                            "hsv": d.hsv if d.is_bulb and d.is_color else None,
-                                            "has_color": d.is_color if d.is_bulb else False,
-                                            "has_brightness": d.is_dimmable if d.is_bulb or d.is_dimmer else False
-                                        })
+                                        frontend_list.append(info_dict)
                                     
                                     result_str = "No devices found in cache."
                                     if dev_summaries:
@@ -1215,29 +1200,7 @@ class AudioLoop:
                                         # Quick rebuild of list from internal dict
                                         updated_list = []
                                         for ip, dev in self.kasa_agent.devices.items():
-                                            # We need to ensure we have the correct dict structure expected by frontend
-                                            # We duplicate logic from KasaAgent.discover_devices a bit, but that's okay for now or we can add a helper
-                                            # Ideally KasaAgent has a 'get_devices_list()' method.
-                                            # Use the cached objects in self.kasa_agent.devices
-                                            
-                                            dev_type = "unknown"
-                                            if dev.is_bulb: dev_type = "bulb"
-                                            elif dev.is_plug: dev_type = "plug"
-                                            elif dev.is_strip: dev_type = "strip"
-                                            elif dev.is_dimmer: dev_type = "dimmer"
-
-                                            d_info = {
-                                                "ip": ip,
-                                                "alias": dev.alias,
-                                                "model": dev.model,
-                                                "type": dev_type,
-                                                "is_on": dev.is_on,
-                                                "brightness": dev.brightness if dev.is_bulb or dev.is_dimmer else None,
-                                                "hsv": dev.hsv if dev.is_bulb and dev.is_color else None,
-                                                "has_color": dev.is_color if dev.is_bulb else False,
-                                                "has_brightness": dev.is_dimmable if dev.is_bulb or dev.is_dimmer else False
-                                            }
-                                            updated_list.append(d_info)
+                                            updated_list.append(self.kasa_agent.describe_device(ip, dev))
                                             
                                         if self.on_device_update:
                                             self.on_device_update(updated_list)

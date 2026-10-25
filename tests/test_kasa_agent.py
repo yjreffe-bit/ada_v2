@@ -145,6 +145,70 @@ class TestKasaDeviceControl:
             print(f"Set color result for {ip}: {result}")
 
 
+class _CapabilityCrashDevice:
+    """Bulb whose deprecated light probes raise, matching python-kasa when modules is missing."""
+
+    def __init__(self):
+        self.alias = "Test Bulb"
+        self.model = "KL135"
+        self.is_on = True
+        self.brightness_set = None
+        self.updated = False
+
+    @property
+    def is_bulb(self):
+        return True
+
+    @property
+    def is_plug(self):
+        return False
+
+    @property
+    def is_strip(self):
+        return False
+
+    @property
+    def is_dimmer(self):
+        return False
+
+    def __getattr__(self, name):
+        if name in {"is_dimmable", "is_color", "brightness", "hsv"}:
+            raise AttributeError("'NoneType' object has no attribute 'get'")
+        raise AttributeError(name)
+
+    async def set_brightness(self, value):
+        self.brightness_set = value
+
+    async def update(self):
+        self.updated = True
+
+
+class TestKasaCapabilityProbes:
+    """Deprecated python-kasa flags must not crash device control."""
+
+    @pytest.mark.asyncio
+    async def test_set_brightness_when_is_dimmable_raises(self):
+        agent = KasaAgent()
+        dev = _CapabilityCrashDevice()
+        agent.devices["192.0.2.20"] = dev
+
+        result = await agent.set_brightness("192.0.2.20", 50)
+
+        assert result is True
+        assert dev.brightness_set == 50
+        assert dev.updated is True
+
+    def test_describe_device_when_capability_probe_raises(self):
+        agent = KasaAgent()
+        info = agent.describe_device("192.0.2.20", _CapabilityCrashDevice())
+
+        assert info["type"] == "bulb"
+        assert info["alias"] == "Test Bulb"
+        assert info["has_brightness"] is False
+        assert info["has_color"] is False
+        assert info["brightness"] is None
+
+
 class TestKasaColorConversion:
     """Test color name to HSV conversion."""
     
