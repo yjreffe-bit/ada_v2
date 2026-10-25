@@ -10,6 +10,8 @@
 
 ADA V2 is a sophisticated AI assistant designed for multimodal interaction. It combines Google's Gemini 2.5 Native Audio with computer vision, gesture control, and 3D CAD generation in a Electron desktop application.
 
+This repository is Jeffrey Llamas's build, a fork of [nazirlouis/ada_v2](https://github.com/nazirlouis/ada_v2). Nazir Louis wrote the original project. Jeffrey is the second owner of this build, and ADA's default personality follows him rather than Naz.
+
 ---
 
 ## 🌟 Capabilities at a Glance
@@ -146,7 +148,7 @@ Important notes:
 
 ```bash
 # 1. Clone and enter
-git clone https://github.com/nazirlouis/ada_v2.git && cd ada_v2
+git clone https://github.com/yjreffe-bit/ada_v2.git && cd ada_v2
 
 # 2. Create Python environment (Python 3.11)
 conda create -n ada_v2 python=3.11 -y && conda activate ada_v2
@@ -189,7 +191,7 @@ If you have never coded before, follow these steps first!
 1. Open your terminal (or Command Prompt on Windows).
 2. Type this command and hit Enter:
    ```bash
-   git clone https://github.com/nazirlouis/ada_v2.git
+   git clone https://github.com/yjreffe-bit/ada_v2.git
    ```
 3. This creates a folder named `ada_v2`.
 
@@ -497,6 +499,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 ---
 
 <p align="center">
-  <strong>Built with 🤖 by Nazir Louis</strong><br>
+  <strong>Original project by Nazir Louis</strong><br>
+  <strong>This build owned by Jeffrey Llamas</strong><br>
   <em>Bridging AI, CAD, and Vision in a Single Interface</em>
 </p>

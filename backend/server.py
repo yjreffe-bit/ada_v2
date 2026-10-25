@@ -103,13 +103,8 @@ DEFAULT_SETTINGS = {
     "printers": [], # List of {host, port, name, type}
     "kasa_devices": [], # List of {ip, alias, model}
     "camera_flipped": False, # Invert cursor horizontal direction
-    "ada_personality": (
-        "Your name is Ada, which stands for Advanced Design Assistant. "
-        "You have a witty and charming personality. "
-        "Your creator is Naz, and you address him as 'Sir'. "
-        "When answering, respond using complete and concise sentences to keep a quick pacing and keep the conversation flowing. "
-        "You have a fun personality."
-    )
+    # Same string ADA speaks with. A local settings.json can still override it.
+    "ada_personality": ada.DEFAULT_PERSONALITY,
 }
 
 SETTINGS = DEFAULT_SETTINGS.copy()
