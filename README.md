@@ -25,6 +25,9 @@ This build is owned by Jeffrey Llamas. ADA's default personality follows him.
 | **👁️ Face Authentication** | Secure local biometric login | MediaPipe Face Landmarker |
 | **🌐 Web Agent** | Autonomous browser automation | Playwright + Chromium |
 | **🎬 Content Video Studio** | Generates short-form scripts, preview videos, publishing copy, and upload shortcuts | Gemini + Pillow + MoviePy + pyttsx3 |
+| **🎥 Provider video** | Saves a clip from Runway, InVideo, or Veo when that key is set | Runway, InVideo, Veo |
+| **📄 Digital products** | Writes a local presentation, flyer, or document, and a Canva edit link when a token is set | PPTX, PNG, PDF, Canva |
+| **📣 Social posting** | Posts or prepares a livestream on Facebook, Instagram, TikTok, and YouTube | Platform APIs |
 | **🏠 Smart Home** | Voice control for TP-Link Kasa devices | `python-kasa` |
 | **📁 Project Memory** | Persistent context across sessions | File-based JSON storage |
 
@@ -142,6 +145,18 @@ Important notes:
 - The video renderer uses local Python media libraries, not paid video APIs
 - Narration uses `pyttsx3` when available; if local TTS is unavailable, ADA still renders a silent preview video with script and scene cards
 - For best results, install the Python dependencies in `requirements.txt`
+
+### Runway, InVideo, products, and social posting
+
+ADA can also call the providers that were previously only named in the tool list.
+
+- **Runway** saves an MP4 when `RUNWAYML_API_KEY` is set. Clips are 2 to 10 seconds.
+- **InVideo** saves an MP4 when `INVIDEO_API_KEY` is set and the provider returns a video URL.
+- **Veo** is unchanged and still uses `VEO_API_KEY` or `GEMINI_API_KEY`.
+- **Presentations, flyers, and documents** are written on this computer (PowerPoint, PNG, or PDF). If `CANVA_ACCESS_TOKEN` is set, ADA also creates a Canva design and returns the edit link. The local file is the content.
+- **Facebook, Instagram, TikTok, and YouTube** post only when that platform's token is set. Video uploads need a local video file. Livestream setup returns an RTMP address for YouTube and Facebook. Instagram and TikTok do not offer a public livestream start API, so ADA says so instead of pretending the stream is live.
+
+YouTube uploads default to private (`YOUTUBE_PRIVACY=private`). TikTok posts default to `SELF_ONLY`. See `.env.example` for every variable. Missing keys produce an error and no success claim.
 
 <details>
 <summary>Click to expand quick setup commands</summary>
