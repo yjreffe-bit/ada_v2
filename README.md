@@ -10,7 +10,7 @@
 
 ADA V2 is a sophisticated AI assistant designed for multimodal interaction. It combines Google's Gemini 2.5 Native Audio with computer vision, gesture control, and 3D CAD generation in a Electron desktop application.
 
-This repository is Jeffrey Llamas's build, a fork of [nazirlouis/ada_v2](https://github.com/nazirlouis/ada_v2). Nazir Louis wrote the original project. Jeffrey is the second owner of this build, and ADA's default personality follows him rather than Naz.
+This build is owned by Jeffrey Llamas. ADA's default personality follows him.
 
 ---
 
@@ -96,7 +96,7 @@ npm run dev:mobile
 
 Then open `http://YOUR_COMPUTER_IP:5173` on the phone. With no `VITE_SOCKET_URL`, the page talks to that same Vite origin, and the dev server proxies `/socket.io` to `http://127.0.0.1:8000`. Set `VITE_SOCKET_URL` only when the browser should open the API port directly.
 
-`npm run apk:debug` and `npm run apk:release` build the Capacitor app. They expect a local Android SDK (`ANDROID_HOME`) and a JDK on `PATH`. The SDK is not stored in this repository.
+`npm run apk:debug` and `npm run apk:release` build the Capacitor app. They expect a local Android SDK (`ANDROID_HOME`) and a JDK on `PATH`. The SDK is not stored in this repository. The Android application id is `com.jeffreyllamas.adav2`. An install built with an older id will not update in place.
 
 ### Gemini Key Failover
 
@@ -499,7 +499,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 ---
 
 <p align="center">
-  <strong>Original project by Nazir Louis</strong><br>
-  <strong>This build owned by Jeffrey Llamas</strong><br>
+  <strong>Owned by Jeffrey Llamas</strong><br>
   <em>Bridging AI, CAD, and Vision in a Single Interface</em>
 </p>

@@ -1,4 +1,4 @@
-package com.nazirlouis.adav2;
+package com.jeffreyllamas.adav2;
 
 import com.getcapacitor.BridgeActivity;
 
