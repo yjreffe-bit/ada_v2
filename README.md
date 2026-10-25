@@ -373,7 +373,7 @@ npm run dev
 ### 🧊 3D CAD
 - **Prompt**: "Create a 3D model of a hex bolt."
 - **Iterate**: "Make the head thinner." (Requires previous context)
-- **Files**: Saves to `projects/[ProjectName]/output.stl`.
+- **Files**: Saves under the per-user projects folder, in `[ProjectName]/cad`. See "Project files" below.
 
 ### 🌐 Web Agent
 - **Prompt**: "Go to Amazon and find a USB-C cable under $10."
@@ -445,7 +445,7 @@ ada_v2/
 │   └── main.js                 # Window & IPC setup
 ├── android/                    # Capacitor Android project (no SDK committed)
 ├── scripts/                    # Optional local diagnostics, not used at runtime
-├── projects/                   # User project data (auto-created)
+├── projects/                   # Legacy location only. New data lives outside the repo.
 ├── .env                        # API keys (create this!)
 ├── requirements.txt            # Python dependencies
 ├── package.json                # Node.js dependencies
@@ -480,7 +480,19 @@ Contributions are welcome! Here's how:
 
 - Run the backend separately (`python backend/server.py`) to see Python logs.
 - Use `npm run dev` without Electron during frontend development (faster reload).
-- The `projects/` folder contains user data—don't commit it to Git.
+- Project files live outside the repo. Don't commit them.
+
+### Project files
+
+CAD, chat history, and the browser profile are not stored in the repository. A checkout inside OneDrive or Documents made `projects/temp` undeletable (`WinError 5`), which used to abort startup. ADA now keeps that data here:
+
+| System | Folder |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\ADA\projects` |
+| macOS | `~/Library/Application Support/ADA/projects` |
+| Linux | `$XDG_DATA_HOME/ADA/projects` or `~/.local/share/ADA/projects` |
+
+Set `ADA_PROJECTS_DIR` to use a different folder. The first launch copies named projects out of a legacy `projects/` directory next to the repo and leaves the originals in place. Temp cleanup clears the read-only bit and retries; if that still fails, startup continues with a fresh temp directory.
 
 ---
 

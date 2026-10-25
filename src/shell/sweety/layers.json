@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "image": "sweety-layers.png",
+  "frameWidth": 454,
+  "frameHeight": 488,
+  "frames": {
+    "rest": 0,
+    "closed": 1,
+    "mid": 2,
+    "open": 3
+  },
+  "eyes": {
+    "x": 0.22,
+    "y": 0.16,
+    "w": 0.56,
+    "h": 0.24
+  },
+  "mouth": {
+    "x": 0.34,
+    "y": 0.45,
+    "w": 0.39,
+    "h": 0.28
+  },
+  "accent": "#22D3EE",
+  "error": "#FB7185",
+  "notes": "Normalized rects are fractions of one frame. Y increases downward. The sheet order is rest, eyes closed, mouth parted, mouth open."
+}
