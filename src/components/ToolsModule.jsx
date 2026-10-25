@@ -88,6 +88,8 @@ const ToolsModule = ({
 
                 {/* Settings Button */}
                 <button
+                    type="button"
+                    aria-label="Settings"
                     onClick={onToggleSettings}
                     className={`${mobileLayout ? 'w-full justify-center' : ''} p-3 rounded-full border-2 transition-all inline-flex items-center ${showSettings ? 'border-cyan-400 text-cyan-400 bg-cyan-900/20' : 'border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500'
                         } `}

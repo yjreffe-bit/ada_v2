@@ -45,6 +45,8 @@ android/local.properties
 *.keystore
 *.p12
 *.pem
+# OAuth tokens belong outside the repo (or in the OS keyring). Never commit a copy.
+oauth_tokens.json
 
 # IDE
 .vscode/

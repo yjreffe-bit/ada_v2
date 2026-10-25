@@ -5,6 +5,12 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from oauth_connections import (
+    facebook_credentials,
+    instagram_credentials,
+    tiktok_access_token,
+    youtube_access_token,
+)
 from provider_http import HttpResult, http_request
 
 GRAPH_VERSION = "v22.0"
@@ -53,10 +59,9 @@ class SocialMediaAgent:
             return f"{platform}: failed before the provider accepted the request: {exc}"
 
     async def _facebook(self, kind, payload):
-        page_id = os.getenv("FACEBOOK_PAGE_ID", "").strip()
-        token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "").strip()
+        page_id, token = facebook_credentials()
         if not page_id or not token:
-            return "facebook: missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN, so nothing was posted."
+            return "facebook: not connected. Use Connect in Settings, or set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN, so nothing was posted."
 
         path = _existing_file(payload)
         if kind == "livestream":
@@ -115,10 +120,9 @@ class SocialMediaAgent:
         )
 
     async def _instagram(self, kind, payload):
-        user_id = os.getenv("INSTAGRAM_USER_ID", "").strip()
-        token = os.getenv("INSTAGRAM_ACCESS_TOKEN", "").strip()
+        user_id, token = instagram_credentials()
         if not user_id or not token:
-            return "instagram: missing INSTAGRAM_USER_ID or INSTAGRAM_ACCESS_TOKEN, so nothing was posted."
+            return "instagram: not connected. Use Connect in Settings, or set INSTAGRAM_USER_ID and INSTAGRAM_ACCESS_TOKEN, so nothing was posted."
         if kind == "livestream":
             return "instagram: no public API lets ADA start a livestream. Upload a video instead."
 
@@ -174,9 +178,9 @@ class SocialMediaAgent:
         return f"instagram: reel published. Id {media_id}."
 
     async def _tiktok(self, kind, payload):
-        token = os.getenv("TIKTOK_ACCESS_TOKEN", "").strip()
+        token = tiktok_access_token()
         if not token:
-            return "tiktok: missing TIKTOK_ACCESS_TOKEN, so nothing was posted."
+            return "tiktok: not connected. Use Connect in Settings, or set TIKTOK_ACCESS_TOKEN, so nothing was posted."
         if kind == "livestream":
             return "tiktok: no public API lets ADA start a livestream. Upload a video instead."
 
@@ -235,9 +239,9 @@ class SocialMediaAgent:
         return f"tiktok: video submitted. Publish id {publish_id}. Privacy {privacy}."
 
     async def _youtube(self, kind, payload):
-        token = os.getenv("YOUTUBE_ACCESS_TOKEN", "").strip()
+        token = youtube_access_token()
         if not token:
-            return "youtube: missing YOUTUBE_ACCESS_TOKEN, so nothing was posted."
+            return "youtube: not connected. Use Connect in Settings, or set YOUTUBE_ACCESS_TOKEN, so nothing was posted."
         privacy = os.getenv("YOUTUBE_PRIVACY", "private").strip() or "private"
 
         if kind == "livestream":

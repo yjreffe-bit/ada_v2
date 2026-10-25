@@ -6,9 +6,13 @@ import asyncio
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+import logging
 import socketio
 import uvicorn
-from fastapi import FastAPI
+import webbrowser
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from oauth_connections import OAuthError, callback_page, manager, redirect_uris, redact_secrets_in_text
 import asyncio
 import threading
 import sys
@@ -172,6 +176,11 @@ def _build_local_fallback_reply(user_text, failure_reason):
         cloud_issue,
         f"Core status: face auth {'enabled' if face_auth_enabled else 'disabled'}, {printer_count} saved printer(s), {kasa_count} saved smart device(s).",
     ]
+    try:
+        from oauth_connections import connection_summary
+        summary.append(connection_summary())
+    except Exception as exc:
+        print(f"[OAUTH] Could not read connection status: {exc}")
 
     lowered = (user_text or "").lower()
     if any(word in lowered for word in ["status", "health", "check", "diagnose", "why"]):
@@ -245,6 +254,8 @@ async def _run_startup_initialization():
     STARTUP_CHECKS = await ada.refresh_provider_preflight(force=True)
     _LAST_STARTUP_REFRESH_TS = time.time()
     print(f"[SERVER] Provider preflight: {STARTUP_CHECKS.get('summary')}")
+    for redirect in redirect_uris():
+        print(f"[OAUTH] Register this redirect URL: {redirect}")
 
 
 @asynccontextmanager
@@ -256,9 +267,40 @@ async def lifespan(_app):
 app = FastAPI(lifespan=lifespan)
 app_socketio = log_origin_middleware(socketio.ASGIApp(sio, app))
 
+
+class _OAuthLogFilter(logging.Filter):
+    def filter(self, record):
+        try:
+            message = record.getMessage()
+        except Exception:
+            return True
+        redacted = redact_secrets_in_text(message)
+        if redacted != message:
+            record.msg = redacted
+            record.args = ()
+        return True
+
+
+for _logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+    logging.getLogger(_logger_name).addFilter(_OAuthLogFilter())
+
 @app.get("/status")
 async def status():
     return {"status": "running", "service": "A.D.A Backend"}
+
+
+@app.get("/oauth/{provider}/callback", response_class=HTMLResponse)
+async def oauth_callback(provider: str, request: Request):
+    # The authorization code in the query is a secret. Do not log request.url.
+    try:
+        result = await asyncio.to_thread(manager().finish, provider, dict(request.query_params))
+    except OAuthError as exc:
+        return HTMLResponse(callback_page("ADA login failed", str(exc)), status_code=400)
+    try:
+        await sio.emit("connections", manager().public_status())
+    except Exception:
+        print("[OAUTH] Could not refresh the Connections panel.")
+    return HTMLResponse(callback_page("ADA connected", result["message"]))
 
 
 @app.get("/startup-checks")
@@ -1225,6 +1267,74 @@ async def control_kasa(sid, data):
 @sio.event
 async def get_settings(sid):
     await sio.emit('settings', SETTINGS)
+
+@sio.event
+async def get_connections(sid):
+    status = await asyncio.to_thread(manager().public_status)
+    await sio.emit('connections', status, room=sid)
+
+@sio.event
+async def oauth_save_credentials(sid, data):
+    payload = data or {}
+    provider = payload.get("provider", "")
+    try:
+        await asyncio.to_thread(
+            manager().save_app_credentials,
+            provider,
+            payload.get("client_id"),
+            payload.get("client_secret"),
+        )
+    except OAuthError as exc:
+        await sio.emit('oauth_message', {'provider': provider, 'ok': False, 'message': str(exc)}, room=sid)
+        return
+    await sio.emit('connections', manager().public_status(), room=sid)
+    await sio.emit('oauth_message', {'provider': provider, 'ok': True, 'message': 'Saved on this PC.'}, room=sid)
+
+@sio.event
+async def oauth_connect(sid, data):
+    payload = data or {}
+    provider = payload.get("provider", "")
+    if "client_id" in payload or "client_secret" in payload:
+        try:
+            await asyncio.to_thread(
+                manager().save_app_credentials,
+                provider,
+                payload.get("client_id") if "client_id" in payload else None,
+                payload.get("client_secret") if "client_secret" in payload else None,
+            )
+        except OAuthError as exc:
+            await sio.emit('oauth_message', {'provider': provider, 'ok': False, 'message': str(exc)}, room=sid)
+            return
+    try:
+        started = await asyncio.to_thread(manager().begin, provider)
+    except OAuthError as exc:
+        await sio.emit('connections', manager().public_status(), room=sid)
+        await sio.emit('oauth_message', {'provider': provider, 'ok': False, 'message': str(exc)}, room=sid)
+        return
+    opened = False
+    try:
+        opened = bool(webbrowser.open(started["url"], new=2))
+    except Exception:
+        opened = False
+    print(f"[OAUTH] {provider} login {'opened in the browser' if opened else 'is ready in Settings'}.")
+    message = "Login page opened in your browser." if opened else "ADA could not open the browser. Use Open login page."
+    await sio.emit('oauth_message', {
+        'provider': provider,
+        'ok': True,
+        'opened': opened,
+        'message': message,
+        'url': started["url"],
+    }, room=sid)
+
+@sio.event
+async def oauth_disconnect(sid, data):
+    service = (data or {}).get("service", "")
+    try:
+        await asyncio.to_thread(manager().disconnect, service)
+    except OAuthError as exc:
+        await sio.emit('oauth_message', {'provider': service, 'ok': False, 'message': str(exc)}, room=sid)
+        return
+    await sio.emit('connections', manager().public_status())
 
 @sio.event
 async def update_settings(sid, data):

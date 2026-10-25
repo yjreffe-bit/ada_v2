@@ -1,19 +1,19 @@
 import asyncio
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from oauth_connections import canva_access_token
 from provider_http import http_request
 
 
 class DigitalProductAgent:
     """Creates a real presentation, flyer, or document on disk.
 
-    A Canva design is also created when CANVA_ACCESS_TOKEN is set. The local
-    file is the content; Canva's create-design call opens an editable design.
+    A Canva design is also created when Canva is connected in Settings, or when
+    CANVA_ACCESS_TOKEN is set. The local file is the content.
     """
 
     def __init__(self, output_dir=None, http_request=None):
@@ -47,11 +47,11 @@ class DigitalProductAgent:
         return f"Created {kind} '{outline['title']}' at {path}. {canva_note}"
 
     async def _maybe_create_canva_design(self, title, kind, platform):
-        token = os.getenv("CANVA_ACCESS_TOKEN", "").strip()
+        token = canva_access_token()
         if (platform or "").strip().lower() not in {"", "canva"}:
             return f"Platform '{platform}' is saved as a local file. ADA creates the editable Canva design when platform is canva."
         if not token:
-            return "Canva design was not created because CANVA_ACCESS_TOKEN is not set."
+            return "Canva design was not created because Canva is not connected. Use Connect in Settings, or set CANVA_ACCESS_TOKEN."
 
         if kind == "document":
             design_type = {"type": "preset", "name": "doc"}

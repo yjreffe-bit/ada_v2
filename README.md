@@ -153,10 +153,10 @@ ADA can also call the providers that were previously only named in the tool list
 - **Runway** saves an MP4 when `RUNWAYML_API_KEY` is set. Clips are 2 to 10 seconds.
 - **InVideo** saves an MP4 when `INVIDEO_API_KEY` is set and the provider returns a video URL.
 - **Veo** is unchanged and still uses `VEO_API_KEY` or `GEMINI_API_KEY`.
-- **Presentations, flyers, and documents** are written on this computer (PowerPoint, PNG, or PDF). If `CANVA_ACCESS_TOKEN` is set, ADA also creates a Canva design and returns the edit link. The local file is the content.
-- **Facebook, Instagram, TikTok, and YouTube** post only when that platform's token is set. Video uploads need a local video file. Livestream setup returns an RTMP address for YouTube and Facebook. Instagram and TikTok do not offer a public livestream start API, so ADA says so instead of pretending the stream is live.
+- **Presentations, flyers, and documents** are written on this computer (PowerPoint, PNG, or PDF). Connect Canva in Settings, or set `CANVA_ACCESS_TOKEN`, and ADA also creates a Canva design and returns the edit link. The local file is the content.
+- **Facebook, Instagram, TikTok, and YouTube** post after you click Connect in Settings. A manual token in `.env` still overrides that saved login. Video uploads need a local video file. Livestream setup returns an RTMP address for YouTube and Facebook. Instagram and TikTok do not offer a public livestream start API, so ADA says so instead of pretending the stream is live.
 
-YouTube uploads default to private (`YOUTUBE_PRIVACY=private`). TikTok posts default to `SELF_ONLY`. See `.env.example` for every variable. Missing keys produce an error and no success claim.
+In Settings → Connections, paste each service's id and secret. YouTube's Client ID and Meta's App ID are already filled in. The panel shows the redirect URL to register and a Copy button. Those values stay on this PC. A matching `.env` entry overrides the panel. ADA renews the access token before it expires. Details are in [docs/CONNECT_ACCOUNTS.md](docs/CONNECT_ACCOUNTS.md). YouTube uploads default to private (`YOUTUBE_PRIVACY=private`). TikTok posts default to `SELF_ONLY`. Missing credentials produce an error and no success claim. Ask ADA which accounts are connected.
 
 <details>
 <summary>Click to expand quick setup commands</summary>

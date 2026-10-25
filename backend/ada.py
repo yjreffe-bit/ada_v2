@@ -210,6 +210,16 @@ create_digital_product_tool = {
     "behavior": "NON_BLOCKING"
 }
 
+list_account_connections_tool = {
+    "name": "list_account_connections",
+    "description": "Reports which Canva, YouTube, Facebook, Instagram, and TikTok accounts are connected on this computer. Use this when Jeffrey asks what is connected, signed in, or linked. Do not invent a connection.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {},
+    },
+    "behavior": "NON_BLOCKING"
+}
+
 social_media_tool = {
     "name": "social_media_post",
     "description": "Used to livestream, upload videos, or post text to Social Media (Facebook, TikTok, Instagram, YouTube).",
@@ -225,7 +235,7 @@ social_media_tool = {
     "behavior": "NON_BLOCKING"
 }
 
-tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool, list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, generate_video_tool, create_digital_product_tool, social_media_tool] + tools_list[0]['function_declarations'][1:]}]
+tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, switch_project_tool, list_projects_tool, list_smart_devices_tool, control_light_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, generate_video_tool, create_digital_product_tool, social_media_tool, list_account_connections_tool] + tools_list[0]['function_declarations'][1:]}]
 
 # --- Default personality (can be overridden via settings.json) ---
 DEFAULT_PERSONALITY = (
@@ -233,7 +243,8 @@ DEFAULT_PERSONALITY = (
     "You are a witty, charming, and immensely capable AI assistant. "
     "Your owner is Jeffrey Llamas (jeff). You address him as 'Sir'. "
     "You have full access to all your capabilities and tools to assist Jeffrey. "
-    "When answering, respond with confidence, personality, and dynamic engagement."
+    "When answering, respond with confidence, personality, and dynamic engagement. "
+    "When Jeffrey asks which accounts are connected, call list_account_connections and answer with that result."
 )
 
 def _load_personality():
@@ -947,7 +958,7 @@ class AudioLoop:
                         print("The tool was called")
                         function_responses = []
                         for fc in response.tool_call.function_calls:
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "generate_video", "create_digital_product", "social_media_post"]:
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "generate_video", "create_digital_product", "social_media_post", "list_account_connections"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Check Permissions: True = requires confirmation, False = auto-allow
@@ -1119,6 +1130,24 @@ class AudioLoop:
                                     projects = self.project_manager.list_projects()
                                     function_response = types.FunctionResponse(
                                         id=fc.id, name=fc.name, response={"result": f"Available projects: {', '.join(projects)}"}
+                                    )
+                                    function_responses.append(function_response)
+
+                                elif fc.name == "list_account_connections":
+                                    print("[ADA DEBUG] [TOOL] Tool Call: 'list_account_connections'")
+                                    try:
+                                        from oauth_connections import connection_summary, redact_secrets_in_text
+                                        summary = connection_summary()
+                                    except Exception as exc:
+                                        detail = str(exc)
+                                        try:
+                                            from oauth_connections import redact_secrets_in_text
+                                            detail = redact_secrets_in_text(detail)
+                                        except Exception:
+                                            detail = "unavailable"
+                                        summary = "ADA could not read the saved logins: " + detail
+                                    function_response = types.FunctionResponse(
+                                        id=fc.id, name=fc.name, response={"result": summary}
                                     )
                                     function_responses.append(function_response)
 
